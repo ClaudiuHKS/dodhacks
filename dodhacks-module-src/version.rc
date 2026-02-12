@@ -1,0 +1,73 @@
+
+#define APSTUDIO_READONLY_SYMBOLS
+
+#include <winresrc.h>
+#include <moduleconfig.h>
+
+#undef APSTUDIO_READONLY_SYMBOLS
+
+#if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_ENU)
+#ifdef _WIN32
+LANGUAGE LANG_ENGLISH, SUBLANG_ENGLISH_US
+#pragma code_page(1252)
+#endif
+
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION MODULE_VERSION_MICROSOFT
+ PRODUCTVERSION MODULE_VERSION_MICROSOFT
+ FILEFLAGSMASK 0x17L
+#ifdef _DEBUG
+ FILEFLAGS 0x1L
+#else
+ FILEFLAGS 0x0L
+#endif
+ FILEOS 0x4L
+ FILETYPE 0x2L
+ FILESUBTYPE 0x0L
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "000004b0"
+        BEGIN
+            VALUE "Comments", MODULE_NAME
+            VALUE "FileDescription", MODULE_NAME
+            VALUE "FileVersion", MODULE_VERSION
+            VALUE "InternalName", MODULE_LIBRARY
+            VALUE "LegalCopyright", "Copyright (c) " MODULE_AUTHOR
+            VALUE "OriginalFilename", MODULE_LIBRARY "_amxx.dll"
+            VALUE "ProductName", MODULE_NAME
+            VALUE "ProductVersion", MODULE_VERSION
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x0, 1200
+    END
+END
+
+#ifdef APSTUDIO_INVOKED
+
+1 TEXTINCLUDE 
+BEGIN
+    "resource.h\0"
+END
+
+2 TEXTINCLUDE 
+BEGIN
+    "#include ""winres.h""\r\n"
+    "\0"
+END
+
+3 TEXTINCLUDE 
+BEGIN
+    "\r\n"
+    "\0"
+END
+
+#endif
+
+#endif
+
+#ifndef APSTUDIO_INVOKED
+
+#endif
