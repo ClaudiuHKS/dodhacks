@@ -1,11 +1,20 @@
 CMD += gcc
 OUT += dodhacks_amxx_i386.so
 
+# root directories for external dependencies
+# e.g. `make HLSDK_ROOT=/opt/hlsdk AMXMODX_ROOT=/opt/amxmodx`.
+HLSDK_ROOT ?= /mnt/d/scripting/hlsdk-master
+AMXMODX_ROOT ?= /mnt/d/scripting/amxmodx-master
+SUBHOOK_ROOT ?= /mnt/d/scripting/subhook-master
+METAMOD_HL1_ROOT ?= /mnt/d/scripting/metamod-hl1-master
+METAMOD_SOURCE_ROOT ?= /mnt/d/scripting/metamod-source-master
+
+
 SRC += linux_compat.c
 SRC += dodhacks.cpp
 SRC += Memory.cpp
-SRC += /mnt/d/scripting/amxmodx-master/public/sdk/amxxmodule.cpp
-SRC += /mnt/d/scripting/subhook-master/subhook.c
+SRC += $(AMXMODX_ROOT)/public/sdk/amxxmodule.cpp
+SRC += $(SUBHOOK_ROOT)/subhook.c
 
 DEF += -D__fastcall=/**__fastcall*/
 DEF += -D__thiscall=/**__thiscall*/
@@ -63,16 +72,16 @@ HDR += -I.
 HDR += -I./
 HDR += -I..
 HDR += -I../
-HDR += -I/mnt/d/scripting/hlsdk-master/common
-HDR += -I/mnt/d/scripting/hlsdk-master/dlls
-HDR += -I/mnt/d/scripting/hlsdk-master/engine
-HDR += -I/mnt/d/scripting/hlsdk-master/pm_shared
-HDR += -I/mnt/d/scripting/hlsdk-master/public
-HDR += -I/mnt/d/scripting/amxmodx-master/public
-HDR += -I/mnt/d/scripting/amxmodx-master/public/sdk
-HDR += -I/mnt/d/scripting/subhook-master
-HDR += -I/mnt/d/scripting/metamod-hl1-master/metamod
-HDR += -I/mnt/d/scripting/metamod-source-master/core/sourcehook
+HDR += -I$(HLSDK_ROOT)/common
+HDR += -I$(HLSDK_ROOT)/dlls
+HDR += -I$(HLSDK_ROOT)/engine
+HDR += -I$(HLSDK_ROOT)/pm_shared
+HDR += -I$(HLSDK_ROOT)/public
+HDR += -I$(AMXMODX_ROOT)/public
+HDR += -I$(AMXMODX_ROOT)/public/sdk
+HDR += -I$(SUBHOOK_ROOT)
+HDR += -I$(METAMOD_HL1_ROOT)/metamod
+HDR += -I$(METAMOD_SOURCE_ROOT)/core/sourcehook
 
 OPT += -fno-exceptions
 OPT += -fno-rtti
