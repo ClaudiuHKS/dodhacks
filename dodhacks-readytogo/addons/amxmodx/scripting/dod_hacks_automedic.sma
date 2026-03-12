@@ -1,27 +1,29 @@
 
-#pragma ctrlchar '\' /// Original was '^'.
+#pragma ctrlchar '\' /// Replace '^' with '\'.
 
 #include <amxmodx>
 #include <amxmisc>
 #include <hamsandwich>
 #include <dodhacks>
 
-new g_MaxPlayers;
-new g_HealthPerTask;
-new g_File[256];
-new bool: g_InServer[33];
-new bool: g_CanTrigger[33];
-new bool: g_Sound;
-new Float: g_DamageTime[33];
-new Float: g_TaskInterval;
-new Float: g_Delay;
+new g_maxPlayers; /// Maximum players the game server can handle.
+new g_healthPerTask; /// Health to give during each task.
+new g_soundFile[256]; /// Audio sound file, if any. << Populated only if 'g_Sound' is set to true >>.
+new bool: g_isInServer[33]; /// Whether or not the player is in server.
+new bool: g_isFakePlayer[33]; /// Whether or not the player is a BOT (a fake player).
+new bool: g_canTrigger[33]; /// Whether or not the audio sound file may play for the player.
+new bool: g_Sound; /// Whether or not to play an audio file during player's healing process.
+new bool: g_speakToPlayer; /// If true, sound file will be played only to the player. Otherwise, players close to the healed will hear as well.
+new Float: g_dmgTime[33]; /// Player's taken damage timestamp.
+new Float: g_taskInterval; /// Interval in seconds between two tasks.
+new Float: g_Delay; /// The delay in seconds between the moment of getting wounded and healing process.
 
 public plugin_init()
 {
-    register_plugin("DoD Hacks: Auto Medic", "1.0.0.2", "Hattrick HKS (claudiuhks)");
+    register_plugin("DoD Hacks: Auto Medic", "1.0.0.3", "Hattrick HKS (claudiuhks)");
 
-    g_MaxPlayers = get_maxplayers();
-    set_task(g_TaskInterval, "Task_HealPlayers", .flags = "b");
+    g_maxPlayers = get_maxplayers();
+    set_task(g_taskInterval, "Task_HealPlayers", .flags = "b");
 
 #if defined amxclient_cmd && defined RegisterHamPlayer
     RegisterHamPlayer(Ham_TakeDamage, "OnPlayerTakeDamage_Post", true);
@@ -54,111 +56,109 @@ public plugin_precache()
         trim(Buffer);
         if (!Buffer[0] || Buffer[0] == ';' || Buffer[0] == '/' ||
             parse(Buffer, Key, charsmax(Key), Val, charsmax(Val)) < 2)
-        {
             continue;
-        }
+
         if (equali(Key, "@task_interval"))
-        {
-            g_TaskInterval = str_to_float(Val);
-        }
+            g_taskInterval = str_to_float(Val);
         else if (equali(Key, "@hp_amount_per_task"))
-        {
-            g_HealthPerTask = str_to_num(Val);
-        }
+            g_healthPerTask = str_to_num(Val);
         else if (equali(Key, "@wound_delay"))
-        {
             g_Delay = str_to_float(Val);
-        }
         else if (equali(Key, "@play_sound"))
-        {
             g_Sound = bool: str_to_num(Val);
-        }
+        else if (equali(Key, "@speak_player"))
+            g_speakToPlayer = bool: str_to_num(Val);
         else if (g_Sound && equali(Key, "@sound_file"))
-        {
-            copy(g_File, charsmax(g_File), Val);
-        }
+            copy(g_soundFile, charsmax(g_soundFile), Val);
     }
     fclose(Config);
 
     if (g_Sound)
     {
-        if (!g_File[0])
-        {
+        if (!g_soundFile[0])
             g_Sound = false;
-        }
         else
         {
-            while (contain(g_File, "\\") > -1)
-            {
+            while (contain(g_soundFile, "\\") > -1)
+            { /// Convert all \ to / (which is cross-platform).
 #if !defined replace_stringex
-                replace(g_File, charsmax(g_File), "\\", "/");
+                replace(g_soundFile, charsmax(g_soundFile), "\\", "/");
 #else
-                replace_stringex(g_File, charsmax(g_File), "\\", "/", 1, 1, true);
+                replace_stringex(g_soundFile, charsmax(g_soundFile), "\\", "/", 1, 1, true);
+#endif
+            } /// Strip 'sound/' word if exists.
+#if !defined replace_stringex
+            strTransformEx(g_soundFile, "sound/", 0, 5, true); /// Transform the key to lower if insensitively contained.
+            replace(g_soundFile, charsmax(g_soundFile), "sound/", "");
+#else
+            replace_stringex(g_soundFile, charsmax(g_soundFile), "sound/", "", 6, 0, false);
+#endif
+            precache_sound(g_soundFile); /// Make users download the file if needed.
+            if (g_speakToPlayer)
+            { /// Strip '.wav' word once the sound has been precached.
+#if !defined replace_stringex
+                strTransformEx(g_soundFile, ".wav", 1, 3, true); /// Transform the key to lower if insensitively contained.
+                replace(g_soundFile, charsmax(g_soundFile), ".wav", "");
+#else
+                replace_stringex(g_soundFile, charsmax(g_soundFile), ".wav", "", 4, 0, false);
 #endif
             }
-#if !defined replace_stringex
-            replace(g_File, charsmax(g_File), "sound/", "");
-#else
-            replace_stringex(g_File, charsmax(g_File), "sound/", "", 6, 0, false);
-#endif
-            precache_sound(g_File);
-#if !defined replace_stringex
-            replace(g_File, charsmax(g_File), ".wav", "");
-#else
-            replace_stringex(g_File, charsmax(g_File), ".wav", "", 4, 0, false);
-#endif
         }
     }
     return PLUGIN_CONTINUE;
 }
 
 public OnPlayerTakeDamage_Post(Player)
-{
-    if (g_InServer[Player])
-    {
-        g_DamageTime[Player] = get_gametime();
-    }
-}
+    g_dmgTime[Player] = get_gametime();
 
 public Task_HealPlayers()
 {
     static Player, Added, Float: Time;
-    for (Player = 1, Time = get_gametime(); Player <= g_MaxPlayers; Player++)
+    for (Player = 1, Time = get_gametime(); Player <= g_maxPlayers; Player++)
     {
-        if (g_InServer[Player] && Time - g_DamageTime[Player] > g_Delay)
+        if (g_isInServer[Player] && Time - g_dmgTime[Player] > g_Delay)
         { /// This call automatically excludes dead players.
-            DoD_AddHealthIfWounded(Player, g_HealthPerTask, Added);
+            DoD_AddHealthIfWounded(Player, g_healthPerTask, Added);
             if (g_Sound)
             {
                 if (DoD_IsPlayerFullHealth(Player))
                 { /// pev_health == pev_maxhealth check.
-                    g_CanTrigger[Player] = true;
+                    g_canTrigger[Player] = true;
                 }
-                else if (Added && g_CanTrigger[Player])
+                else if (Added && g_canTrigger[Player])
                 {
-                    client_cmd(Player, "SPK \"%s\"", g_File);
-                    g_CanTrigger[Player] = false;
+                    if (g_speakToPlayer)
+                    {
+                        if (false == g_isFakePlayer[Player])
+                            client_cmd(Player, "SPK \"%s\"", g_soundFile);
+                    }
+                    else
+                        emit_sound(Player, CHAN_ITEM, g_soundFile, VOL_NORM, ATTN_NORM, 0, PITCH_NORM);
+                    g_canTrigger[Player] = false;
                 }
             }
         }
     }
 }
 
-public client_connect(Player)
-{
-    g_InServer[Player] = false;
-    g_DamageTime[Player] = 0.0;
-    g_CanTrigger[Player] = true;
-}
-
 public client_putinserver(Player)
 {
-    g_InServer[Player] = true;
+    g_isInServer[Player] = true;
+    g_canTrigger[Player] = true;
+    g_isFakePlayer[Player] = bool: is_user_bot(Player);
+    g_dmgTime[Player] = 0.0;
 }
 
 public DOD_ON_PLAYER_DISCONNECTED
+    g_isInServer[Player] = false;
+
+#if !defined replace_stringex
+strTransformEx(Buffer[], const Key[], Skip, Chars, bool: lowerCase)
 {
-    g_InServer[Player] = false;
-    g_DamageTime[Player] = 0.0;
-    g_CanTrigger[Player] = true;
+    static Pos, Iter;
+    Pos = containi(Buffer, Key);
+    if (Pos > -1)
+        for (Iter = Skip + Pos; Iter < Pos + Skip + Chars; Iter++)
+            Buffer[Iter] = lowerCase ? char_to_lower(Buffer[Iter]) : char_to_upper(Buffer[Iter]);
 }
+#endif

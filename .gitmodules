@@ -1,0 +1,15 @@
+[submodule "dodhacks-module-src/hlsdk"]
+	path = dodhacks-module-src/hlsdk
+	url = https://github.com/alliedmodders/hlsdk.git
+[submodule "dodhacks-module-src/amxmodx"]
+	path = dodhacks-module-src/amxmodx
+	url = https://github.com/alliedmodders/amxmodx.git
+[submodule "dodhacks-module-src/metamod-hl1"]
+	path = dodhacks-module-src/metamod-hl1
+	url = https://github.com/alliedmodders/metamod-hl1.git
+[submodule "dodhacks-module-src/subhook"]
+	path = dodhacks-module-src/subhook
+	url = https://github.com/ClaudiuHKS/subhook.git
+[submodule "dodhacks-module-src/Detours"]
+	path = dodhacks-module-src/Detours
+	url = https://github.com/microsoft/Detours.git

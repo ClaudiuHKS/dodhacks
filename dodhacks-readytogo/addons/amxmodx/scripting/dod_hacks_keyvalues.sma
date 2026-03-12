@@ -4,9 +4,7 @@
 #include <dodhacks>
 
 public plugin_init()
-{
-    register_plugin("DoD Hacks: Key Values", "1.0.0.2", "Hattrick HKS (claudiuhks)");
-}
+    register_plugin("DoD Hacks: Key Values", "1.0.0.3", "Hattrick HKS (claudiuhks)");
 
 public plugin_precache()
 {
@@ -26,9 +24,7 @@ public plugin_precache()
     {
         trim(Buffer);
         if (!Buffer[0] || Buffer[0] == ';' || Buffer[0] == '/')
-        {
             continue;
-        }
         if (parse(Buffer, CfgMap, charsmax(CfgMap), Class, charsmax(Class),
             Key, charsmax(Key), Val, charsmax(Val)) < 4)
         {
@@ -38,13 +34,9 @@ public plugin_precache()
         if (!CfgMap[0] || equali(CfgMap, Map))
         {
             if (false == Add)
-            {
                 DoD_AddKeyValDel(CfgMap, Class, Key, Val);
-            }
             else
-            {
                 DoD_AddKeyValAdd(CfgMap, Class, Key, Val);
-            }
         }
     }
     fclose(Config);

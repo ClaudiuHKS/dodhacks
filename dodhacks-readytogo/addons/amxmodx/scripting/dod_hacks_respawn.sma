@@ -1,14 +1,15 @@
 
 #include <amxmodx>
 #include <amxmisc>
+#include <dodconst>
 #include <dodhacks>
 
-new Float: g_AlliesTime;
-new Float: g_AxisTime;
+new Float: g_AlliesTime; /// Interval in seconds between two Allies or British respawn waves.
+new Float: g_AxisTime; /// Interval in seconds between two Axis respawn waves.
 
 public plugin_init()
 {
-    register_plugin("DoD Hacks: Respawn", "1.0.0.2", "Hattrick HKS (claudiuhks)");
+    register_plugin("DoD Hacks: Respawn", "1.0.0.3", "Hattrick HKS (claudiuhks)");
 
     new Buffer[256];
     get_configsdir(Buffer, charsmax(Buffer));
@@ -26,24 +27,16 @@ public plugin_init()
     {
         trim(Buffer);
         if (!Buffer[0] || Buffer[0] == ';' || Buffer[0] == '/')
-        {
             continue;
-        }
         if (parse(Buffer, CfgMap, charsmax(CfgMap),
             Allies, charsmax(Allies), Axis, charsmax(Axis)) < 3)
         {
             if (equali(CfgMap, "@task_interval"))
-            {
                 TaskInterval = str_to_float(Allies);
-            }
             else if (equali(CfgMap, "@def_allies_time"))
-            {
                 g_AlliesTime = str_to_float(Allies);
-            }
             else if (equali(CfgMap, "@def_axis_time"))
-            {
                 g_AxisTime = str_to_float(Allies);
-            }
             continue;
         }
         if (equali(Map, CfgMap))
@@ -54,18 +47,14 @@ public plugin_init()
         }
     }
     fclose(Config);
-    set_task(TaskInterval, "Shorten_RespawnTimes", .flags = "b"); /// Ensure shorter respawn times.
+    set_task(TaskInterval, "Alter_RespawnTimes", .flags = "b");
     return PLUGIN_CONTINUE;
 }
 
-public Shorten_RespawnTimes()
+public Alter_RespawnTimes()
 {
-    if (DoD_GetWaveTime(1) > g_AlliesTime)
-    { /// Team #1 (Allies)
-        DoD_SetWaveTime(1, g_AlliesTime);
-    }
-    if (DoD_GetWaveTime(2) > g_AxisTime)
-    { /// Team #2 (Axis)
-        DoD_SetWaveTime(2, g_AxisTime);
-    }
+    if (DoD_GetWaveTime(ALLIES) > g_AlliesTime) /// Team #1 (Allies)
+        DoD_SetWaveTime(ALLIES  /** 1 */, g_AlliesTime);
+    if (DoD_GetWaveTime(AXIS)   > g_AxisTime)   /// Team #2 (Axis)
+        DoD_SetWaveTime(AXIS    /** 2 */, g_AxisTime);
 }

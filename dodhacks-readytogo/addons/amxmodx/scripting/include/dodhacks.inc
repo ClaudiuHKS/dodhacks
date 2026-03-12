@@ -30,24 +30,39 @@ enum DoD_Address
  */
 enum DoD_FuncIndex
 {
-	DoD_FI_PlayerSpawn = 0,
-	DoD_FI_GiveNamedItem,
-	DoD_FI_DropPlayerItem,
-	DoD_FI_GiveAmmo,
-	DoD_FI_SetWaveTime,
-	DoD_FI_GetWaveTime,
-	DoD_FI_RemovePlayerItem,
-	DoD_FI_AddPlayerItem,
-	DoD_FI_RemovePlayerItem,
-	DoD_FI_SetBodygroup,
-	DoD_FI_DestroyItem,
-	DoD_FI_SubRemove,
-	DoD_FI_PackWeapon,
-	DoD_FI_WpnBoxKill,
-	DoD_FI_WpnBoxActivateThink,
-	DoD_FI_Create,
-	DoD_FI_InstallGameRules,
-	DoD_FI_UtilRemove,
+    DoD_FI_PlayerSpawn = 0,
+    DoD_FI_GiveNamedItem,
+    DoD_FI_DropPlayerItem,
+    DoD_FI_GiveAmmo,
+    DoD_FI_SetWaveTime,
+    DoD_FI_GetWaveTime,
+    DoD_FI_RemovePlayerItem,
+    DoD_FI_AddPlayerItem,
+    DoD_FI_RemoveAllItems,
+    DoD_FI_SetBodygroup,
+    DoD_FI_DestroyItem,
+    DoD_FI_SubRemove,
+    DoD_FI_PackWeapon,
+    DoD_FI_InstallGameRules,
+    DoD_FI_WpnBoxKill,
+    DoD_FI_WpnBoxActivateThink,
+    DoD_FI_Create,
+    DoD_FI_UtilRemove,
+    DoD_FI_CreateNamedEntity,
+};
+
+/**
+ * To be used within
+ * DoD_StoreToAddress()
+ * and DoD_ReadFromAddress().
+ */
+enum DoD_MemSize
+{
+    DoD_Int8 = false,
+    DoD_UInt8,
+    DoD_Int16,
+    DoD_UInt16,
+    DoD_Int32,
 };
 
 /**
@@ -66,19 +81,25 @@ enum DoD_FuncIndex
  */
 
 /**
- * Player is being spawned. Ensure the player
- * is in server during this call.
+ * Player is being spawned. Ensure the
+ * player is in server during this call.
  * pev_playerclass checks, DoD_GiveNamedItem()
  * calls and weapon_enfield/ weapon_fg42 scope
- * installations are made in this game's original
- * function (if not disabled by calling
- * DoD_DisableAutoScoping() already).
- * Player may be altered.
+ * installations are made in this game's
+ * original function (if not disabled by
+ * calling DoD_DisableAutoScoping() already).
+ * Player may be altered. If the player is
+ * in server, they should be alive now.
  *
  * CDoDTeamPlay (Game Rules) is an address
  * of a pointer.
  */
 forward DoD_OnPlayerSpawn(DoD_Address: CDoDTeamPlay, &Player);
+
+/**
+ * Player got spawned. If they are in
+ * server, they should be alive now.
+ */
 forward DoD_OnPlayerSpawn_Post(DoD_Address: CDoDTeamPlay, Player);
 
 /**
@@ -93,8 +114,16 @@ forward DoD_OnPlayerSpawn_Post(DoD_Address: CDoDTeamPlay, Player);
  * "weapon_scopedfg42". Plugins can, if
  * they execute DoD_GiveNamedItem() with
  * ExecHooks parameter set to true.
+ * "weapon_scopekar" may be passed by the
+ * game. Just the two above are "unique".
+ *
+ * If returning PLUGIN_HANDLED, game will
+ * then receive OverrideRes as the result
+ * of the call. OverrideRes is initially
+ * set to -1. -1 means a null entity. 0
+ * would mean the worldspawn entity.
  */
-forward DoD_OnGiveNamedItem(Player, Item[], ItemSize /** = 64 */);
+forward DoD_OnGiveNamedItem(Player, Item[], ItemSize /** = 64 */, &OverrideRes);
 
 /**
  * Player has received a named item.
@@ -113,14 +142,28 @@ forward DoD_OnGiveNamedItem_Post(Player, const Item[], ItemEntity);
  * If empty string, current weapon will drop.
  */
 forward DoD_OnDropPlayerItem(Player, Item[], ItemSize /** = 64 */, &bool: Force);
+
+/**
+ * Player dropped an item.
+ */
 forward DoD_OnDropPlayerItem_Post(Player, const Item[], Force);
 
 /**
  * Item is removed from
  * player's inventory.
  * Item may be altered.
+ *
+ * If returning
+ * PLUGIN_HANDLED, game
+ * will then receive
+ * OverrideRes as the
+ * result of the call.
+ * OverrideRes is
+ * initially set to 0.
+ * 0 means failure.
+ * 1 success.
  */
-forward DoD_OnRemovePlayerItem(Player, &Item);
+forward DoD_OnRemovePlayerItem(Player, &Item, &OverrideRes);
 
 /**
  * On success,
@@ -132,8 +175,18 @@ forward DoD_OnRemovePlayerItem_Post(Player, Item, Res);
  * Item is added to
  * player's inventory.
  * Item may be altered.
+ *
+ * If returning
+ * PLUGIN_HANDLED, game
+ * will then receive
+ * OverrideRes as the
+ * result of the call.
+ * OverrideRes is
+ * initially set to 0.
+ * 0 means failure.
+ * 1 success.
  */
-forward DoD_OnAddPlayerItem(Player, &Item);
+forward DoD_OnAddPlayerItem(Player, &Item, &OverrideRes);
 
 /**
  * On success,
@@ -214,8 +267,28 @@ forward DoD_OnWpnBoxActivateThink_Post(Entity);
  * Name's size is 64.
  * Origin, Angles and
  * Owner may be altered.
+ * Use -1 for null entity.
+ *
+ * This function also
+ * executes
+ * AddEntityHashValue().
+ *
+ * If returning
+ * PLUGIN_HANDLED, game
+ * will then receive
+ * OverrideRes as the
+ * result of the call.
+ * OverrideRes is initially
+ * set to -1. -1 means a
+ * null entity. 0 would
+ * mean the worldspawn
+ * entity.
+ *
+ * When a weapon is dropped,
+ * this function is called
+ * (as an example).
  */
-forward DoD_OnCreate(Name[], NameSize /** = 64 */, Float: Origin[3], Float: Angles[3], &Owner);
+forward DoD_OnCreate(Name[], NameSize /** = 64 */, Float: Origin[3], Float: Angles[3], &Owner, &OverrideRes);
 
 /**
  * A named entity got
@@ -225,6 +298,38 @@ forward DoD_OnCreate(Name[], NameSize /** = 64 */, Float: Origin[3], Float: Angl
  * entity index or -1.
  */
 forward DoD_OnCreate_Post(const Name[], const Float: Origin[3], const Float: Angles[3], Owner, ItemRes);
+
+/**
+ * Creating a named entity.
+ * Name's content may be
+ * altered during call.
+ * In module's source code,
+ * Name's size is 64.
+ *
+ * This function also
+ * executes
+ * AddEntityHashValue().
+ *
+ * If returning
+ * PLUGIN_HANDLED, game
+ * will then receive
+ * OverrideRes as the
+ * result of the call.
+ * OverrideRes is initially
+ * set to -1. -1 means a
+ * null entity. 0 would
+ * mean the worldspawn
+ * entity.
+ */
+forward DoD_OnCreateNamedEntity(Name[], NameSize /** = 64 */, &OverrideRes);
+
+/**
+ * A named entity got
+ * created. Entity is the
+ * created entity index
+ * or -1.
+ */
+forward DoD_OnCreateNamedEntity_Post(const Name[], Entity);
 
 /**
  * Game is asking for respawn wave time.
@@ -255,6 +360,10 @@ forward DoD_OnGetWaveTime_Post(DoD_Address: CDoDTeamPlay, Team, Float: Time);
  * an address of a pointer.
  */
 forward DoD_OnSetWaveTime(DoD_Address: CDoDTeamPlay, &Team, &Float: Time);
+
+/**
+ * Game set a respawn wave time.
+ */
 forward DoD_OnSetWaveTime_Post(DoD_Address: CDoDTeamPlay, Team, Float: Time);
 
 /**
@@ -263,6 +372,10 @@ forward DoD_OnSetWaveTime_Post(DoD_Address: CDoDTeamPlay, Team, Float: Time);
  * RemoveSuit may be changed during call.
  */
 forward DoD_OnRemoveAllItems(Player, &RemoveSuit);
+
+/**
+ * Player got all their items removed.
+ */
 forward DoD_OnRemoveAllItems_Post(Player, RemoveSuit);
 
 /**
@@ -271,8 +384,15 @@ forward DoD_OnRemoveAllItems_Post(Player, RemoveSuit);
  * be altered during call.
  * For more details,
  * see DoD_GiveAmmo() native.
+ *
+ * If returning PLUGIN_HANDLED,
+ * game will then receive
+ * OverrideRes as the result
+ * of the call. OverrideRes is
+ * initially set to -1. -1
+ * means failure.
  */
-forward DoD_OnGiveAmmo(Player, &Ammo, Name[], NameSize /** = 64 */, &Max);
+forward DoD_OnGiveAmmo(Player, &Ammo, Name[], NameSize /** = 64 */, &Max, &OverrideRes);
 
 /**
  * Player has received ammo.
@@ -300,8 +420,18 @@ forward DoD_OnSetBodygroup_Post(Entity, Group, Value);
  * Weapon is being packed
  * into a weaponbox entity.
  * Weapon may be altered.
+ *
+ * If returning
+ * PLUGIN_HANDLED, game
+ * will then receive
+ * OverrideRes as the
+ * result of the call.
+ * OverrideRes is
+ * initially set to 0.
+ * 0 means failure.
+ * 1 success.
  */
-forward DoD_OnPackWeapon(Entity, &Weapon);
+forward DoD_OnPackWeapon(Entity, &Weapon, &OverrideRes);
 
 /**
  * Weapon was packed
@@ -314,8 +444,17 @@ forward DoD_OnPackWeapon_Post(Entity, Weapon, Res);
 /**
  * CDoDTeamPlay (Game Rules)
  * is being installed.
+ *
+ * If returning
+ * PLUGIN_HANDLED, game will
+ * then receive OverrideRes
+ * as the result of the call.
+ * OverrideRes is initially
+ * set to DoD_Address_Null.
+ * DoD_Address_Null means a
+ * null pointer.
  */
-forward DoD_OnInstallGameRules();
+forward DoD_OnInstallGameRules(&DoD_Address: OverrideRes);
 
 /**
  * CDoDTeamPlay (Game Rules)
@@ -702,8 +841,8 @@ native bool: DoD_DisableAutoScoping();
 native bool: DoD_EnableAutoScoping();
 
 /**
- * Returns true if Auto
- * Scoping of weapon_fg42
+ * Returns true if auto.
+ * scoping of weapon_fg42
  * and weapon_enfield
  * depending on
  * pev_playerclass
@@ -766,5 +905,221 @@ native bool: DoD_WpnBoxActivateThink(Entity, bool: ExecHooks = false);
  * -1 otherwise. Returning true
  * does not guarantee ItemRes
  * is not set to -1.
+ *
+ * To set an entity as null, use
+ * -1 value.
+ *
+ * This function also executes
+ * AddEntityHashValue().
  */
 native bool: DoD_Create(const Name[], const Float: Origin[3], const Float: Angles[3], Owner, &ItemRes, bool: ExecHooks = false);
+
+/**
+ * Creates a named entity.
+ * Returns true on success.
+ * Entity is the entity
+ * index of the created
+ * entity, if any. -1
+ * otherwise.
+ *
+ * This function also
+ * executes
+ * AddEntityHashValue().
+ */
+native bool: DoD_CreateNamedEntity(const Name[], &Entity, bool: ExecHooks = false);
+
+/**
+ * Finds an address in
+ * memory of a module
+ * by using a signature.
+ * IDA style. Returns
+ * true on success.
+ *
+ * Module can be "dod",
+ * "cs", "tfc", "hl",
+ * "dmc", "ricochet"
+ * or "mp".
+ *
+ * Module can be
+ * "engine" on Linux
+ * and "swds" on
+ * Windows. You should
+ * use
+ * 'is_linux_server()'.
+ *
+ * Module can be
+ * "file_i386",
+ * "file_i486" and
+ * "file_i686" on
+ * Linux (as example).
+ */
+native bool: DoD_FindSignature(const Module[], const Signature[], bool: QuestionMarkAllowsZero, &DoD_Address: Address);
+
+/**
+ * Finds an address in
+ * memory of a module
+ * by using a symbol.
+ * Returns true on
+ * success.
+ *
+ * Module can be "dod",
+ * "cs", "tfc", "hl",
+ * "dmc", "ricochet"
+ * or "mp".
+ *
+ * Module can be
+ * "engine" on Linux
+ * and "swds" on
+ * Windows. You should
+ * use
+ * 'is_linux_server()'.
+ *
+ * Module can be
+ * "file_i386",
+ * "file_i486" and
+ * "file_i686" on
+ * Linux (as example).
+ */
+native bool: DoD_FindSymbol(const Module[], const Symbol[], &DoD_Address: Address);
+
+/**
+ * Reads a value from an
+ * address. Returns true
+ * on success.
+ */
+native bool: DoD_ReadFromAddress(DoD_Address: Address, DoD_MemSize: Size, &Value);
+
+/**
+ * Stores a value to an
+ * address. Returns true
+ * on success.
+ */
+native bool: DoD_StoreToAddress(DoD_Address: Address, Value, DoD_MemSize: Size);
+
+/**
+ * Allocates a string
+ * via engine's
+ * AllocString() if
+ * not already
+ * allocated by DoD
+ * Hacks. Returns
+ * true on success.
+ * Allocated is the
+ * allocated string.
+ * On fail, Allocated
+ * is set to -1.
+ */
+native bool: DoD_AllocString(const String[], &Allocated);
+
+/**
+ * Effects, installed on demand,
+ * only if a plugin uses them.
+ */
+
+/**
+ * Installs/ updates
+ * pfnAddToFullPack_Post() for
+ * this map and allows players
+ * to see their own explo.
+ * nade projectiles glowing.
+ *
+ * Solid is
+ * 'short ::entity_state_s::solid'.
+ * Can be SOLID_NOT.
+ *
+ * If alterSolidState is set to
+ * false, Solid param. is ignored.
+ *
+ * Intended to be called in
+ * plugin_init().
+ *
+ * Returns true.
+ */
+native bool: DoD_AddExploNadeProjGlow(Mode, Fx, Color[3], Amount, Solid, bool: alterSolidState);
+
+/**
+ * Disallows players see their
+ * own explo. nade projectiles
+ * glowing.
+ *
+ * Uninstalls
+ * pfnAddToFullPack_Post().
+ *
+ * Returns true if it was
+ * enabled. False otherwise.
+ */
+native bool: DoD_DelExploNadeProjGlow();
+
+/**
+ * Sets a player excluded
+ * or unexcluded
+ * from seeing explosive
+ * grenade projectiles
+ * glowing. Players are
+ * initially unexcluded.
+ */
+native bool: DoD_SetExploNadeProjGlow(Player, bool: Excluded);
+
+/**
+ * Gets whether a player
+ * is excluded from seeing
+ * explosive grenade
+ * projectiles glowing.
+ */
+native bool: DoD_GetExploNadeProjGlow(Player);
+
+/**
+ * Installs/ updates
+ * pfnAddToFullPack_Post() for
+ * this map and allows players
+ * to see dropped explo. nades
+ * glowing.
+ *
+ * Solid is
+ * 'short ::entity_state_s::solid'.
+ * Can be SOLID_NOT.
+ *
+ * If alterSolidState is set to
+ * false, Solid param. is ignored.
+ *
+ * If includeArmedExploNades is
+ * set to true, these dropped
+ * explo. nades will glow as well.
+ *
+ * Intended to be called in
+ * plugin_init().
+ *
+ * Returns true.
+ */
+native bool: DoD_AddDroppedExploNadeGlow(bool: includeArmedExploNades, Mode, Fx, Color[3], Amount, Solid, bool: alterSolidState);
+
+/**
+ * Disallows players see
+ * dropped explo. nades
+ * glowing.
+ *
+ * Uninstalls
+ * pfnAddToFullPack_Post().
+ *
+ * Returns true if it was
+ * enabled. False otherwise.
+ */
+native bool: DoD_DelDroppedExploNadeGlow();
+
+/**
+ * Sets a player excluded
+ * or unexcluded
+ * from seeing dropped
+ * explosive grenades
+ * glowing. Players are
+ * initially unexcluded.
+ */
+native bool: DoD_SetDroppedExploNadeGlow(Player, bool: Excluded);
+
+/**
+ * Gets whether a player
+ * is excluded from seeing
+ * dropped explosive
+ * grenades glowing.
+ */
+native bool: DoD_GetDroppedExploNadeGlow(Player);
