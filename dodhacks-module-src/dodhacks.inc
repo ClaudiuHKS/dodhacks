@@ -20,7 +20,7 @@
  */
 enum DoD_Address
 {
-    DoD_Address_Null = 0,
+    DoD_Address_Null = false,
 };
 
 /**
@@ -30,7 +30,9 @@ enum DoD_Address
  */
 enum DoD_FuncIndex
 {
-    DoD_FI_PlayerSpawn = 0,
+    /// Game, __thiscall
+    ///
+    DoD_FI_PlayerSpawn = false,
     DoD_FI_GiveNamedItem,
     DoD_FI_DropPlayerItem,
     DoD_FI_GiveAmmo,
@@ -43,12 +45,21 @@ enum DoD_FuncIndex
     DoD_FI_DestroyItem,
     DoD_FI_SubRemove,
     DoD_FI_PackWeapon,
-    DoD_FI_InstallGameRules,
     DoD_FI_WpnBoxKill,
     DoD_FI_WpnBoxActivateThink,
+    DoD_FI_ChangePlayerTeam,
+    DoD_FI_ChooseRandomClass,
+
+    /// Game, __cdecl
+    ///
     DoD_FI_Create,
+    DoD_FI_InstallGameRules,
     DoD_FI_UtilRemove,
     DoD_FI_CreateNamedEntity,
+
+    /// Engine, __cdecl
+    ///
+    DoD_FI_Engine_CalcPing,
 };
 
 /**
@@ -63,6 +74,36 @@ enum DoD_MemSize
     DoD_Int16,
     DoD_UInt16,
     DoD_Int32,
+    DoD_UInt32,
+};
+
+/**
+ * To be used within
+ * DoD_ChooseRandomClass().
+ */
+enum DoD_RandomClassAction
+{
+    DoD_RCA_None = false,
+    DoD_RCA_Add,
+    DoD_RCA_Remove,
+};
+
+/**
+ * To be used within
+ * DoD_TraceLineComplex().
+ */
+enum unsigned: DoD_TraceRes
+{
+    bool:  DoD_AllSolid,
+    bool:  DoD_StartSolid,
+    bool:  DoD_InOpen,
+    bool:  DoD_InWater,
+    Float: DoD_Fraction,
+    Float: DoD_EndPos[3],
+    Float: DoD_PlaneDistance,
+    Float: DoD_PlaneNormal[3],
+           DoD_HitEntity,      /// -1 if null entity.
+           DoD_HitGroup,
 };
 
 /**
@@ -193,6 +234,28 @@ forward DoD_OnAddPlayerItem(Player, &Item, &OverrideRes);
  * Res is set to 1.
  */
 forward DoD_OnAddPlayerItem_Post(Player, Item, Res);
+
+/**
+ * Engine calculates
+ * a player ping to
+ * show it to others.
+ * Ping is initially
+ * set to zero. You
+ * can alter it and
+ * return
+ * PLUGIN_HANDLED.
+ * Return
+ * PLUGIN_CONTINUE
+ * to not change.
+ */
+forward DoD_OnEngine_CalcPing(Player, &Ping);
+
+/**
+ * Engine calculated
+ * a player ping to
+ * show it to others.
+ */
+forward DoD_OnEngine_CalcPing_Post(Player, Ping);
 
 /**
  * Item is being
@@ -403,6 +466,32 @@ forward DoD_OnGiveAmmo(Player, &Ammo, Name[], NameSize /** = 64 */, &Max, &Overr
 forward DoD_OnGiveAmmo_Post(Player, Ammo, const Name[], Max, Res);
 
 /**
+ * Called when player changes
+ * their team. Player, Team,
+ * Kill and Gib may be altered.
+ * Gib doesn't seem to be used.
+ */
+forward DoD_OnChangePlayerTeam(DoD_Address: CDoDTeamPlay, &Player, &Team, &Kill, &Gib);
+
+/**
+ * Player changed their team.
+ */
+forward DoD_OnChangePlayerTeam_Post(DoD_Address: CDoDTeamPlay, Player, Team, Kill, Gib);
+
+/**
+ * Called when player chooses
+ * a random class. Player may
+ * be altered during call.
+ */
+forward DoD_OnChooseRandomClass(DoD_Address: CDoDTeamPlay, &Player);
+
+/**
+ * Player choosed random class.
+ * Res is the new player class.
+ */
+forward DoD_OnChooseRandomClass_Post(DoD_Address: CDoDTeamPlay, Player, Res);
+
+/**
  * Entities/ players get
  * their bodygroup set.
  * Group and Value may
@@ -603,6 +692,98 @@ native bool: DoD_GiveAmmo(Player, Ammo, const Name[], Max, &Res, bool: ExecHooks
 native bool: DoD_RemoveAllItems(Player, RemoveSuit, bool: ExecHooks = false);
 
 /**
+ * Changes a player team.
+ * Gib isn't really used.
+ *
+ * PTeam message is auto.
+ * sent during this call.
+ *
+ * If Force is true, will
+ * make 'int entvars_s::team'
+ * set as well. The game call
+ * does not include this
+ * parameter or feature by
+ * default.
+ *
+ * If Update is true, will
+ * make AMXX module update
+ * player team as well (for
+ * further 'get_user_team'
+ * and 'get_players' [with
+ * team filtering on] calls.
+ *
+ * If Loud is true, will
+ * send a chat message to
+ * everyone announcing the
+ * player team change. The
+ * game does not include
+ * this parameter or feature
+ * by default (in this call).
+ *
+ * If Strong is true, player
+ * will not be able to
+ * manually roll back the
+ * team change very soon.
+ */
+native bool: DoD_ChangePlayerTeam(Player, Team, bool: Kill, bool: Gib, bool: Force, bool: Update, bool: Loud, bool: Strong, bool: ExecHooks = false);
+
+/**
+ * Assigns the player a
+ * random class. Res is
+ * the new player class.
+ * Res is -1 on failure.
+ *
+ * If Update is true,
+ * pev_playerclass will
+ * be updated as well.
+ * 'int CBasePlayer::m_iNextClass'
+ * is already updated
+ * during this call.
+ *
+ * If Loud is true,
+ * will manually send a
+ * PClass message to
+ * announce everyone
+ * about this change.
+ * Game does not
+ * include this by
+ * default (in this call).
+ *
+ * If Notify is true,
+ * will manually send a
+ * TextMsg message to
+ * announce the player
+ * about their new class.
+ *
+ * If NotifyRandom is true,
+ * and Notify is true too,
+ * player will be notified
+ * that they'll (re)spawn as
+ * random class (without
+ * displaying class name).
+ *
+ * If Action is set to
+ * DoD_RCA_Add, it sets
+ * 'bool CBasePlayer::m_bIsRandomClass'
+ * to true. If Action is
+ * set to DoD_RCA_Remove,
+ * it sets
+ * 'bool CBasePlayer::m_bIsRandomClass'
+ * to false. If Action
+ * is set to DoD_RCA_None,
+ * no change is made.
+ */
+native bool: DoD_ChooseRandomClass(Player, &Res, bool: Update, bool: Loud, bool: Notify, bool: NotifyRandom, DoD_RandomClassAction: Action, bool: ExecHooks = false);
+
+/**
+ * Calculates a player ping.
+ * Returns true on success.
+ * On failure, Ping is set
+ * to -1.
+ */
+native bool: DoD_Engine_CalcPing(Player, &Ping, bool: ExecHooks = false);
+
+/**
  * Adds Health HP to player if needed.
  * If pev_health + Health >= pev_maxhealth,
  * sets pev_health to pev_maxhealth.
@@ -698,11 +879,46 @@ native Float: DoD_GetAxisRespawnFactor();
 native bool: DoD_ReadGameRulesBool(Offset);
 
 /**
+ * Reads a byte from
+ * CDoDTeamPlay (Game Rules)
+ * address.
+ */
+native DoD_ReadGameRulesByte(Offset);
+
+/**
+ * Reads an unsigned byte from
+ * CDoDTeamPlay (Game Rules)
+ * address.
+ */
+native DoD_ReadGameRulesUByte(Offset);
+
+/**
+ * Reads a short from
+ * CDoDTeamPlay (Game Rules)
+ * address.
+ */
+native DoD_ReadGameRulesShort(Offset);
+
+/**
+ * Reads an unsigned short from
+ * CDoDTeamPlay (Game Rules)
+ * address.
+ */
+native DoD_ReadGameRulesUShort(Offset);
+
+/**
  * Reads an int from
  * CDoDTeamPlay (Game Rules)
  * address.
  */
 native DoD_ReadGameRulesInt(Offset);
+
+/**
+ * Reads an unsigned int from
+ * CDoDTeamPlay (Game Rules)
+ * address.
+ */
+native DoD_ReadGameRulesUInt(Offset);
 
 /**
  * Reads a float from
@@ -717,6 +933,69 @@ native Float: DoD_ReadGameRulesFloat(Offset);
  * address. Returns chars num.
  */
 native DoD_ReadGameRulesStr(Offset, Bytes, Buffer[], Size, bool: AsUtf8);
+
+/**
+ * Stores a bool to
+ * CDoDTeamPlay (Game Rules)
+ * address.
+ */
+native bool: DoD_StoreGameRulesBool(Offset, bool: Value);
+
+/**
+ * Stores a byte to
+ * CDoDTeamPlay (Game Rules)
+ * address.
+ */
+native bool: DoD_StoreGameRulesByte(Offset, Value);
+
+/**
+ * Stores an unsigned byte to
+ * CDoDTeamPlay (Game Rules)
+ * address.
+ */
+native bool: DoD_StoreGameRulesUByte(Offset, Value);
+
+/**
+ * Stores a short to
+ * CDoDTeamPlay (Game Rules)
+ * address.
+ */
+native bool: DoD_StoreGameRulesShort(Offset, Value);
+
+/**
+ * Stores an unsigned short to
+ * CDoDTeamPlay (Game Rules)
+ * address.
+ */
+native bool: DoD_StoreGameRulesUShort(Offset, Value);
+
+/**
+ * Stores an int to
+ * CDoDTeamPlay (Game Rules)
+ * address.
+ */
+native bool: DoD_StoreGameRulesInt(Offset, Value);
+
+/**
+ * Stores an unsigned int to
+ * CDoDTeamPlay (Game Rules)
+ * address.
+ */
+native bool: DoD_StoreGameRulesUInt(Offset, Value);
+
+/**
+ * Stores a float to
+ * CDoDTeamPlay (Game Rules)
+ * address.
+ */
+native Float: DoD_StoreGameRulesFloat(Offset, Float: Value);
+
+/**
+ * Stores a str to
+ * CDoDTeamPlay (Game Rules)
+ * address.
+ */
+native bool: DoD_StoreGameRulesStr(Offset, const Value[]);
 
 /**
  * Removes an item from
@@ -997,6 +1276,20 @@ native bool: DoD_ReadFromAddress(DoD_Address: Address, DoD_MemSize: Size, &Value
 native bool: DoD_StoreToAddress(DoD_Address: Address, Value, DoD_MemSize: Size);
 
 /**
+ * Reads a float from an
+ * address. Returns true
+ * on success.
+ */
+native bool: DoD_ReadFloatFromAddress(DoD_Address: Address, &Float: Res);
+
+/**
+ * Stores a float to an
+ * address. Returns true
+ * on success.
+ */
+native bool: DoD_StoreFloatToAddress(DoD_Address: Address, Float: Value);
+
+/**
  * Allocates a string
  * via engine's
  * AllocString() if
@@ -1010,6 +1303,121 @@ native bool: DoD_StoreToAddress(DoD_Address: Address, Value, DoD_MemSize: Size);
  * is set to -1.
  */
 native bool: DoD_AllocString(const String[], &Allocated);
+
+/**
+ * Whether player owns
+ * a deployable gun (in
+ * their inventory).
+ */
+native bool: DoD_PlayerOwnsDeployableGun(Player);
+
+/**
+ * Whether player holds
+ * a deployable gun (in
+ * their hands).
+ */
+native bool: DoD_PlayerHoldsDeployableGun(Player);
+
+/**
+ * Gets player class
+ * name by class idx.
+ * Returns class string
+ * length. If Class is
+ * not a valid class,
+ * "Random" is set.
+ */
+native bool: DoD_ClassIndexToName(Class, Name[], Size, bool: AsUtf8);
+
+/**
+ * Gets team name by
+ * team index. Returns
+ * team string length.
+ * Fails if the team
+ * index is invalid.
+ * Valid team indexes
+ * are 0, 1, 2 and 3.
+ */
+native DoD_TeamIndexToName(Team, Name[], Size, bool: AsUtf8);
+
+/**
+ * Traces a line just
+ * to execute TraceLine()
+ * inside AMXX modules.
+ * Traces a line as the
+ * game was basically
+ * tracing it. All
+ * related hooks will
+ * get called.
+ *
+ * SkipEntity should
+ * be -1 to not skip.
+ */
+native bool: DoD_TraceLine(const Float: From[3], const Float: To[3], bool: NoMonsters, SkipEntity);
+
+/**
+ * A complex type of
+ * TraceLine().
+ *
+ * If ExecHooks is set
+ * to true, this traces
+ * a line just to
+ * execute TraceLine()
+ * inside AMXX modules.
+ * It traces a line as
+ * the game was
+ * basically tracing it.
+ * All related hooks
+ * will get called.
+ *
+ * If ExecHooks is set
+ * to false, this
+ * behaves like
+ * 'EngFunc_TraceLine'.
+ *
+ * SkipEntity should
+ * be -1 to not skip.
+ */
+native bool: DoD_TraceLineComplex(const Float: From[3], const Float: To[3], bool: NoMonsters, SkipEntity, Res[DoD_TraceRes], bool: ExecHooks);
+
+/**
+ * Hooks pfnShouldCollide()
+ * to filter collision
+ * between a player and an
+ * entity. Returns true on
+ * success. Returns false
+ * if already hooked.
+ */
+native bool: DoD_HookShouldCollide();
+
+/**
+ * Unhooks pfnShouldCollide().
+ * Returns true on uccess.
+ * Returns false if already
+ * unhooked. If Clear is true,
+ * list of blocked entities
+ * from player collision will
+ * be cleared.
+ */
+native bool: DoD_UnhookShouldCollide(bool: Clear);
+
+/**
+ * Sets an entity to not
+ * collide with a player.
+ * Returns true on success.
+ * Returns false if entity
+ * already set.
+ */
+native bool: DoD_BlockToPlayerCollision(Entity);
+
+/**
+ * Removes an entity from
+ * player-entity
+ * anti-collision list.
+ * Returns ture on success.
+ * Returns false if entity
+ * already removed.
+ */
+native bool: DoD_UnblockFromPlayerCollision(Entity);
 
 /**
  * Effects, installed on demand,
@@ -1033,7 +1441,8 @@ native bool: DoD_AllocString(const String[], &Allocated);
  * Intended to be called in
  * plugin_init().
  *
- * Returns true.
+ * Returns true if it was off.
+ * False otherwise.
  */
 native bool: DoD_AddExploNadeProjGlow(Mode, Fx, Color[3], Amount, Solid, bool: alterSolidState);
 
@@ -1089,7 +1498,8 @@ native bool: DoD_GetExploNadeProjGlow(Player);
  * Intended to be called in
  * plugin_init().
  *
- * Returns true.
+ * Returns true if it was off.
+ * False otherwise.
  */
 native bool: DoD_AddDroppedExploNadeGlow(bool: includeArmedExploNades, Mode, Fx, Color[3], Amount, Solid, bool: alterSolidState);
 
@@ -1123,3 +1533,30 @@ native bool: DoD_SetDroppedExploNadeGlow(Player, bool: Excluded);
  * grenades glowing.
  */
 native bool: DoD_GetDroppedExploNadeGlow(Player);
+
+/**
+ * Day of Defeat (DoD)
+ * Advanced Deploy feature.
+ */
+
+/**
+ * Turns on the
+ * advanced deploy
+ * feature. Returns
+ * true if it was
+ * disabled. Returns
+ * false if it was
+ * already on.
+ */
+native bool: DoD_AddAdvancedDeploy();
+
+/**
+ * Turns off the
+ * advanced deploy
+ * feature. Returns
+ * true if it was
+ * enabled. Returns
+ * false if it was
+ * already off.
+ */
+native bool: DoD_DelAdvancedDeploy();

@@ -20,7 +20,7 @@ new Float: g_Delay; /// The delay in seconds between the moment of getting wound
 
 public plugin_init()
 {
-    register_plugin("DoD Hacks: Auto Medic", "1.0.0.3", "Hattrick HKS (claudiuhks)");
+    register_plugin("DoD Hacks: Auto Medic", "1.0.0.4", "Hattrick HKS (claudiuhks)");
 
     g_maxPlayers = get_maxplayers();
     set_task(g_taskInterval, "Task_HealPlayers", .flags = "b");
@@ -33,9 +33,9 @@ public plugin_init()
 }
 
 #if !defined client_disconnected
-#define DOD_ON_PLAYER_DISCONNECTED client_disconnect(Player) /** OLD AMX MOD X */
+#define DOD_ON_PLAYER_DISCONNECTED client_disconnect(Player) /** Old AMX Mod X versions. */
 #else
-#define DOD_ON_PLAYER_DISCONNECTED client_disconnected(Player, bool: Drop, Msg[], Size) /** NEW AMX MOD X */
+#define DOD_ON_PLAYER_DISCONNECTED client_disconnected(Player, bool: Drop, Msg[], Size) /** New AMX Mod X versions. */
 #endif
 
 public plugin_precache()

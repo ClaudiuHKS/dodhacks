@@ -3,8 +3,8 @@
 #define __MODULECONFIG_H__
 
 #define MODULE_NAME         "DoD Hacks"
-#define MODULE_VERSION      "1.0.0.3"
-#define MODULE_VERSION_MS   1,0,0,3
+#define MODULE_VERSION      "1.0.0.4"
+#define MODULE_VERSION_MS   1,0,0,4
 #define MODULE_YEAR_MS      "2026"
 #define MODULE_AUTHOR       "Hattrick HKS (claudiuhks)"
 #define MODULE_URL          "https://forums.alliedmods.net/"
@@ -29,8 +29,8 @@
 
 #ifdef USE_METAMOD
 
-/// #define FN_META_QUERY   OnMetaQuery
-/// #define FN_META_ATTACH  OnMetaAttach
+/// #define FN_META_QUERY	OnMetaQuery
+#define FN_META_ATTACH		OnMetaAttach
 /// #define FN_META_DETACH  OnMetaDetach
 
 #define FN_DispatchKeyValue DispatchKeyValue

@@ -9,7 +9,7 @@ new Float: g_AxisTime; /// Interval in seconds between two Axis respawn waves.
 
 public plugin_init()
 {
-    register_plugin("DoD Hacks: Respawn", "1.0.0.3", "Hattrick HKS (claudiuhks)");
+    register_plugin("DoD Hacks: Respawn", "1.0.0.4", "Hattrick HKS (claudiuhks)");
 
     new Buffer[256];
     get_configsdir(Buffer, charsmax(Buffer));

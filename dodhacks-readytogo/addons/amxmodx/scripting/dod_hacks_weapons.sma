@@ -6,6 +6,7 @@
 #include <sqlx>
 #include <dodconst>
 #include <dodhacks>
+#tryinclude <dod_hacks_knives> /// Works without this as well.
 
 ///
 /// Either "mysql", "sqlite" or both should be enabled in /dod/addons/amxmodx/configs/modules.ini
@@ -18,6 +19,10 @@
 ///
 /// mysql is better than sqlite with up to 10%.
 ///
+
+#if !defined _dod_hacks_knives_included /// Works without this too.
+native bool: DoD_IsUserWaitingThrowingKnife(Player);
+#endif
 
 new Handle: g_Sql; /// Threaded database storage.
 new DoD_Address: g_WpnBoxKill; /// CWeaponBox::Kill() function address.
@@ -34,23 +39,28 @@ new bool: g_InSpawn[33]; /// Player is currently spawning.
 new bool: g_InServer[33]; /// Player has fully joined.
 new bool: g_IsAuth[33]; /// Player is authorized.
 new bool: g_Fake[33]; /// Player is fake (a BOT).
+new bool: g_UseFake; /// Whether to include fake players when team-limiting certain guns.
 new bool: g_Local; /// Local storage in use.
 new bool: g_HideMsg; /// Whether or not to hide the 'guns' chat command typed by the players.
 new bool: g_British; /// Map is optimized for British against Axis.
 new bool: g_Delete; /// Delete the dropped gun when selecting a new one via the menu.
 new bool: g_HudStyle; /// Whether or not to use a visual effect on the HUD message(s).
+new bool: g_badIsUserWaitingThrowingKnife = false; /// 'DoD_IsUserWaitingThrowingKnife' function has not been found on the server (if true).
 new Float: g_SpawnTime[33]; /// Time when the player spawned.
 new Float: g_EquipTime[33]; /// Time when the player got equipped.
 new Float: g_TimeLimit; /// Seconds to be able to change the gun after being spawned.
 new Float: g_Delay; /// Seconds between two menu selections.
+new Float: g_LimitRocket; /// Rocket launcher team-limiting option.
+new Float: g_LimitSniper; /// Sniper rifle team-limiting option.
+new Float: g_LimitMachine; /// Machine gun team-limiting option.
 new Float: g_DeleteTime; /// Time in seconds to delete the dropped gun when selecting a new one.
 new Float: g_VerPos; /// HUD message(s) vertical position.
 new Float: g_HorPos; /// HUD message(s) horizontal position.
 new g_Buffer[256]; /// A large buffer.
 new g_Steam[33][32]; /// Player Steam accounts.
 new g_Gun[33]; /// Player gun index selection.
+new g_Team[33]; /// Player team index.
 new g_Page[33]; /// Player menu page.
-new g_Class[33]; /// Player class. << Used only for fake players at the moment >>.
 new g_AlliesGrenade[32]; /// Allies custom-given grenade entity name.
 new g_AxisGrenade[32]; /// Axis custom-given grenade entity name.
 new g_BritishGrenade[32]; /// British custom-given grenade entity name.
@@ -73,7 +83,7 @@ new g_FlagHandGuns; /// Admin access required for receiving hand gun ammo during
 
 public plugin_init()
 {
-    register_plugin("DoD Hacks: Weapons", "1.0.0.3", "Hattrick HKS (claudiuhks)");
+    register_plugin("DoD Hacks: Weapons", "1.0.0.4", "Hattrick HKS (claudiuhks)");
 
     get_configsdir(g_Buffer, charsmax(g_Buffer));
     add(g_Buffer, charsmax(g_Buffer), "/dod_hacks_weapons.ini");
@@ -154,10 +164,18 @@ public plugin_init()
                 g_Delay = str_to_float(Name);
             else if (equali(Weapon, "@admin_asterisk"))
                 AdminAsterisk = bool: str_to_num(Name);
+            else if (equali(Weapon, "@include_bots"))
+                g_UseFake = bool: str_to_num(Name);
             else if (equali(Weapon, "@drop_delete"))
                 g_Delete = bool: str_to_num(Name);
             else if (equali(Weapon, "@delete_time"))
                 g_DeleteTime = str_to_float(Name);
+            else if (equali(Weapon, "@limit_machine"))
+                g_LimitMachine = str_to_float(Name);
+            else if (equali(Weapon, "@limit_sniper"))
+                g_LimitSniper = str_to_float(Name);
+            else if (equali(Weapon, "@limit_rocket"))
+                g_LimitRocket = str_to_float(Name);
             else if (equali(Weapon, "@hud_effects"))
                 g_HudStyle = bool: str_to_num(Name);
             else if (equali(Weapon, "@ver_pos"))
@@ -218,6 +236,7 @@ public plugin_init()
     { /// Can delete, arrays.
         g_Dropped = ArrayCreate();
         g_Times = ArrayCreate();
+        register_forward(FM_RemoveEntity, "OnRemoveEntity_Post", true);
     }
     SQL_GetAffinity(g_Buffer, charsmax(g_Buffer));
     if (!equali(g_Buffer, Driver))
@@ -247,10 +266,29 @@ public plugin_init()
     return PLUGIN_CONTINUE;
 }
 
+public plugin_natives()
+    set_native_filter("nativesFilter");
+
+public nativesFilter(const Name[], Index, bool: Found)
+{
+    if (('D' == Name[0] || Name[0] == 'd') && equali(Name, "DoD_IsUserWaitingThrowingKnife"))
+        switch (Found)
+        {
+            case true:
+                g_badIsUserWaitingThrowingKnife = false;
+            default:
+            {
+                g_badIsUserWaitingThrowingKnife = true;
+                return PLUGIN_HANDLED;
+            }
+        }
+    return PLUGIN_CONTINUE;
+}
+
 #if !defined client_disconnected
-#define DOD_ON_PLAYER_DISCONNECTED client_disconnect(Player) /** OLD AMX MOD X */
+#define DOD_ON_PLAYER_DISCONNECTED client_disconnect(Player) /** Old AMX Mod X versions. */
 #else
-#define DOD_ON_PLAYER_DISCONNECTED client_disconnected(Player, bool: Drop, Msg[], Size) /** NEW AMX MOD X */
+#define DOD_ON_PLAYER_DISCONNECTED client_disconnected(Player, bool: Drop, Msg[], Size) /** New AMX Mod X versions. */
 #endif
 
 public client_putinserver(Player)
@@ -293,21 +331,16 @@ public client_connect(Player)
     F_ZeroPlayerVars(Player);
 
 public DoD_OnPlayerSpawn(DoD_Address: CDoDTeamPlay, &Player)
-{
     if (g_InServer[Player])
-    {
         g_InSpawn[Player] = true;
-        if (g_Fake[Player])
-            g_Class[Player] = pev(Player, pev_playerclass);
-    }
-}
 
 public DoD_OnPlayerSpawn_Post(DoD_Address: CDoDTeamPlay, Player)
 {
-    static Weapon[32], Name[32], Ammo[32], Count, Item, Res, Iter, Flags, Access;
+    static Weapon[32], Name[32], Ammo[32], Count, Item, Res, Iter, Flags, Access, Players, Float: Percent;
     if (g_InServer[Player])
     {
         g_InSpawn[Player] = false;
+        g_Team[Player] = get_user_team(Player);
         g_SpawnTime[Player] = get_gametime();
         Access = get_user_flags(Player);
         if (g_Flag != (Access & g_Flag))
@@ -341,6 +374,72 @@ public DoD_OnPlayerSpawn_Post(DoD_Address: CDoDTeamPlay, Player)
             else
             {
                 ArrayGetString(g_Weapons, g_Gun[Player], Weapon, charsmax(Weapon));
+                if (F_IsSniper(Weapon))
+                {
+                    if (F_SniperLimitReached(Player, g_Team[Player], Players, Percent))
+                    {
+                        if (false == F_IsViewingAMenu(Player))
+                        {
+                            F_ShowMenu(Player, true);
+                            if (1.0 != g_LimitSniper)
+                                client_print(Player, print_chat, "* Sniper gun limit of %0.2f%% reached (%d or %0.2f%%), select a new gun.", g_LimitSniper, Players, Percent);
+                            else
+                                client_print(Player, print_chat, "* Sniper gun limit of 1 reached (%d or %0.2f%%), select a new gun.", Players, Percent);
+                        }
+                        else
+                        {
+                            if (1.0 != g_LimitSniper)
+                                client_print(Player, print_chat, "* Sniper gun limit of %0.2f%% reached (%d or %0.2f%%), type 'guns' for more.", g_LimitSniper, Players, Percent);
+                            else
+                                client_print(Player, print_chat, "* Sniper gun limit of 1 reached (%d or %0.2f%%), type 'guns' for more.", Players, Percent);
+                        }
+                        goto Skip;
+                    }
+                }
+                else if (F_IsMachine(Weapon))
+                {
+                    if (F_MachineLimitReached(Player, g_Team[Player], Players, Percent))
+                    {
+                        if (false == F_IsViewingAMenu(Player))
+                        {
+                            F_ShowMenu(Player, true);
+                            if (1.0 != g_LimitMachine)
+                                client_print(Player, print_chat, "* Machine gun limit of %0.2f%% reached (%d or %0.2f%%), select a new gun.", g_LimitMachine, Players, Percent);
+                            else
+                                client_print(Player, print_chat, "* Machine gun limit of 1 reached (%d or %0.2f%%), select a new gun.", Players, Percent);
+                        }
+                        else
+                        {
+                            if (1.0 != g_LimitMachine)
+                                client_print(Player, print_chat, "* Machine gun limit of %0.2f%% reached (%d or %0.2f%%), type 'guns' for more.", g_LimitMachine, Players, Percent);
+                            else
+                                client_print(Player, print_chat, "* Machine gun limit of 1 reached (%d or %0.2f%%), type 'guns' for more.", Players, Percent);
+                        }
+                        goto Skip;
+                    }
+                }
+                else if (F_IsRocket(Weapon))
+                {
+                    if (F_RocketLimitReached(Player, g_Team[Player], Players, Percent))
+                    {
+                        if (false == F_IsViewingAMenu(Player))
+                        {
+                            F_ShowMenu(Player, true);
+                            if (1.0 != g_LimitRocket)
+                                client_print(Player, print_chat, "* Rocket gun limit of %0.2f%% reached (%d or %0.2f%%), select a new gun.", g_LimitRocket, Players, Percent);
+                            else
+                                client_print(Player, print_chat, "* Rocket gun limit of 1 reached (%d or %0.2f%%), select a new gun.", Players, Percent);
+                        }
+                        else
+                        {
+                            if (1.0 != g_LimitRocket)
+                                client_print(Player, print_chat, "* Rocket gun limit of %0.2f%% reached (%d or %0.2f%%), type 'guns' for more.", g_LimitRocket, Players, Percent);
+                            else
+                                client_print(Player, print_chat, "* Rocket gun limit of 1 reached (%d or %0.2f%%), type 'guns' for more.", Players, Percent);
+                        }
+                        goto Skip;
+                    }
+                }
                 ArrayGetString(g_Ammos, g_Gun[Player], Ammo, charsmax(Ammo));
                 if (DoD_GiveNamedItem(Player, Weapon, Item) && Item > g_MaxPlayers)
                 {
@@ -355,7 +454,7 @@ Skip:
             goto SkipNades;
         if (false == F_HasGrenade(Player, Weapon, charsmax(Weapon), Item))
         {
-            switch (get_user_team(Player))
+            switch (g_Team[Player])
             {
                 case 1:
                 {
@@ -379,9 +478,9 @@ SkipNades:
         if (g_FlagHandGuns == (Access & g_FlagHandGuns) &&
             F_HasSecondaryWeapon(Player, Weapon, charsmax(Weapon), Item))
         {
-            if (g_WebleyCount > 0 && equali(Weapon, "weapon_webley"))
+            if (g_WebleyCount > 0 && equali(Weapon[7], "webley"))
                 DoD_GiveAmmo(Player, g_WebleyCount, g_WebleyAmmo, g_WebleyCount, Res);
-            else if (g_ColtCount > 0 && equali(Weapon, "weapon_colt"))
+            else if (g_ColtCount > 0 && equali(Weapon[7], "colt"))
                 DoD_GiveAmmo(Player, g_ColtCount, g_ColtAmmo, g_ColtCount, Res);
             else if (g_LugerCount > 0)
                 DoD_GiveAmmo(Player, g_LugerCount, g_LugerAmmo, g_LugerCount, Res);
@@ -405,7 +504,7 @@ public OnWeaponMenuPage(Player, Status)
 
 public OnWeaponMenuItem(Player, Menu, Item)
 {
-    static Weapon[32], Name[32], Ammo[32], Access, Count, Flags, Entity, Res, Float: Time, Float: Wait;
+    static Weapon[32], Name[32], Buffer[32], Access, Count, Flags, Entity, Res, Float: Time, Float: Wait, Players, Float: Percent;
     if (Item > -1)
     {
         Access = get_user_flags(Player);
@@ -423,9 +522,58 @@ NoAccess:
             ShowSyncHudMsg(Player, g_HudMsg, "NO ACCESS!");
             return PLUGIN_HANDLED;
         }
+        ArrayGetString(g_Weapons, Item, Weapon, charsmax(Weapon));
+        if (F_IsSniper(Weapon))
+        {
+            if (F_SniperLimitReached(Player, g_Team[Player], Players, Percent))
+            {
+                F_ShowMenu(Player, false, g_Page[Player]);
+                set_hudmessage(180 /** red */, 20 /** green */, 100 /** blue */,
+                    g_HorPos /** horizontal pos */, g_VerPos /** vertical pos */,
+                    g_HudStyle ? 1 : 0 /** effect type */, 0.5 /** effect time */,
+                    3.0 /** duration */, 0.1 /** fade in time */, 0.1 /** fade out time */);
+                if (1.0 != g_LimitSniper)
+                    ShowSyncHudMsg(Player, g_HudMsg, "SNIPER LIMIT OF %0.2f%% REACHED: %d OR %0.2f%%!", g_LimitSniper, Players, Percent);
+                else
+                    ShowSyncHudMsg(Player, g_HudMsg, "SNIPER LIMIT OF 1 REACHED: %d OR %0.2f%%!", Players, Percent);
+                return PLUGIN_HANDLED;
+            }
+        }
+        else if (F_IsMachine(Weapon))
+        {
+            if (F_MachineLimitReached(Player, g_Team[Player], Players, Percent))
+            {
+                F_ShowMenu(Player, false, g_Page[Player]);
+                set_hudmessage(180 /** red */, 20 /** green */, 100 /** blue */,
+                    g_HorPos /** horizontal pos */, g_VerPos /** vertical pos */,
+                    g_HudStyle ? 1 : 0 /** effect type */, 0.5 /** effect time */,
+                    3.0 /** duration */, 0.1 /** fade in time */, 0.1 /** fade out time */);
+                if (1.0 != g_LimitMachine)
+                    ShowSyncHudMsg(Player, g_HudMsg, "MACHINE LIMIT OF %0.2f%% REACHED: %d OR %0.2f%%!", g_LimitMachine, Players, Percent);
+                else
+                    ShowSyncHudMsg(Player, g_HudMsg, "MACHINE LIMIT OF 1 REACHED: %d OR %0.2f%%!", Players, Percent);
+                return PLUGIN_HANDLED;
+            }
+        }
+        else if (F_IsRocket(Weapon))
+        {
+            if (F_RocketLimitReached(Player, g_Team[Player], Players, Percent))
+            {
+                F_ShowMenu(Player, false, g_Page[Player]);
+                set_hudmessage(180 /** red */, 20 /** green */, 100 /** blue */,
+                    g_HorPos /** horizontal pos */, g_VerPos /** vertical pos */,
+                    g_HudStyle ? 1 : 0 /** effect type */, 0.5 /** effect time */,
+                    3.0 /** duration */, 0.1 /** fade in time */, 0.1 /** fade out time */);
+                if (1.0 != g_LimitRocket)
+                    ShowSyncHudMsg(Player, g_HudMsg, "ROCKET LIMIT OF %0.2f%% REACHED: %d OR %0.2f%%!", g_LimitRocket, Players, Percent);
+                else
+                    ShowSyncHudMsg(Player, g_HudMsg, "ROCKET LIMIT OF 1 REACHED: %d OR %0.2f%%!", Players, Percent);
+                return PLUGIN_HANDLED;
+            }
+        }
         g_Gun[Player] = Item;
-        ArrayGetString(g_Names, Item, Name, charsmax(Name));
         Time = get_gametime();
+        ArrayGetString(g_Names, Item, Name, charsmax(Name));
         if (is_user_alive(Player) && (!g_TimeLimit || Time - g_SpawnTime[Player] < g_TimeLimit))
         {
             if (Time - g_EquipTime[Player] < g_Delay)
@@ -439,30 +587,41 @@ NoAccess:
                 ShowSyncHudMsg(Player, g_HudMsg, "WAIT %.1f SEC!", Wait);
                 return PLUGIN_HANDLED;
             }
-            if (F_HasPrimaryWeapon(Player, Weapon, charsmax(Weapon), Entity))
+            if (false == g_badIsUserWaitingThrowingKnife && DoD_IsUserWaitingThrowingKnife(Player))
+            {
+                F_ShowMenu(Player, false, g_Page[Player]);
+                set_hudmessage(200 /** red */, 160 /** green */, 20 /** blue */,
+                    g_HorPos /** horizontal pos */, g_VerPos /** vertical pos */,
+                    g_HudStyle ? 1 : 0 /** effect type */, 0.5 /** effect time */,
+                    Wait /** duration */, 0.1 /** fade in time */, 0.1 /** fade out time */);
+                ShowSyncHudMsg(Player, g_HudMsg, "WAIT FOR THE KNIFE!");
+                return PLUGIN_HANDLED;
+            }
+            if (F_HasPrimaryWeapon(Player, Buffer, charsmax(Buffer), Entity))
             {
                 if (g_Delete)
                 {
                     ArrayPushCell(g_Dropped, Entity);
                     ArrayPushCell(g_Times, Time);
                 }
-                DoD_DropPlayerItem(Player, Weapon, true);
-                Res = ArrayFindString(g_Items[Player], Weapon);
+                DoD_DropPlayerItem(Player, Buffer, true);
+                Res = ArrayFindString(g_Items[Player], Buffer);
                 if (Res > -1)
                 {
                     ArrayDeleteItem(g_Items[Player], Res);
                     ArrayDeleteItem(g_Entities[Player], Res);
                 }
             }
-            ArrayGetString(g_Weapons, Item, Weapon, charsmax(Weapon));
-            ArrayGetString(g_Ammos, Item, Ammo, charsmax(Ammo));
             if (DoD_GiveNamedItem(Player, Weapon, Entity) && Entity > g_MaxPlayers)
             {
                 client_print(Player, print_chat, "* %s equipped. Type 'guns' for more.", Name);
                 g_EquipTime[Player] = Time;
                 Count = ArrayGetCell(g_Counts, Item);
                 if (Count > 0)
-                    DoD_GiveAmmo(Player, Count, Ammo, Count, Res);
+                {
+                    ArrayGetString(g_Ammos, Item, Buffer, charsmax(Buffer));
+                    DoD_GiveAmmo(Player, Count, Buffer, Count, Res);
+                }
             }
         }
         else
@@ -496,6 +655,17 @@ public DoD_OnPackWeapon(Entity, &Weapon, &OverrideRes)
     return PLUGIN_CONTINUE;
 }
 
+public OnRemoveEntity_Post(Entity)
+    F_EraseEntityFromDroppedGuns(Entity);
+
+public DoD_OnSubRemove_Post(Entity)
+    if (g_Delete)
+        F_EraseEntityFromDroppedGuns(Entity);
+
+public DoD_OnUtilRemove_Post(Entity)
+    if (g_Delete)
+        F_EraseEntityFromDroppedGuns(Entity);
+
 public Task_RemoveWeaponBox(Entity)
 {
     static Class[16], Delta;
@@ -526,7 +696,7 @@ public EmptySqlHandler()
 #if defined FindPlayerFlags
 public OnSqlSelection(FailState, Handle: Query, Error[], ErrorNum, Data[])
 {
-    static Player, Gun;
+    static Player, Gun, Players, Float: Percent, Name[32];
     if (Query != Empty_Handle && SQL_NumResults(Query) > 0)
     {
         Player = find_player_ex(FindPlayer_IncludeConnecting | FindPlayer_MatchUserId, str_to_num(Data));
@@ -534,16 +704,76 @@ public OnSqlSelection(FailState, Handle: Query, Error[], ErrorNum, Data[])
         {
             Gun = SQL_ReadResult(Query, 0);
             if (Gun < 0 || Gun >= g_WeaponsCount)
+            {
                 g_Gun[Player] = -1;
+                if (g_InServer[Player])
+                        client_print(Player, print_chat, "* Operator altered gun menu entries, so your gun selection expired.");
+            }
             else
+            {
                 g_Gun[Player] = Gun;
+                if (g_InServer[Player])
+                {
+                    ArrayGetString(g_Weapons, Gun, Name, charsmax(Name));
+                    if (F_IsSniper(Name))
+                    {
+                        if (F_SniperLimitReached(Player, g_Team[Player], Players, Percent))
+                        {
+                            if (1.0 == g_LimitSniper)
+                                client_print(Player, print_chat, "* Sniper gun limit of %0.2f%% reached (%d or %0.2f%%), select a new gun.", g_LimitSniper, Players, Percent);
+                            else
+                                client_print(Player, print_chat, "* Sniper gun limit of 1 reached (%d or %0.2f%%), select a new gun.", Players, Percent);
+                        }
+                        else
+                        {
+                            ArrayGetString(g_Names, Gun, Name, charsmax(Name));
+                            client_print(Player, print_chat, "* Your gun selection updated: %s.", Name);
+                        }
+                    }
+                    else if (F_IsMachine(Name))
+                    {
+                        if (F_MachineLimitReached(Player, g_Team[Player], Players, Percent))
+                        {
+                            if (1.0 == g_LimitMachine)
+                                client_print(Player, print_chat, "* Machine gun limit of %0.2f%% reached (%d or %0.2f%%), select a new gun.", g_LimitMachine, Players, Percent);
+                            else
+                                client_print(Player, print_chat, "* Machine gun limit of 1 reached (%d or %0.2f%%), select a new gun.", Players, Percent);
+                        }
+                        else
+                        {
+                            ArrayGetString(g_Names, Gun, Name, charsmax(Name));
+                            client_print(Player, print_chat, "* Your gun selection updated: %s.", Name);
+                        }
+                    }
+                    else if (F_IsRocket(Name))
+                    {
+                        if (F_RocketLimitReached(Player, g_Team[Player], Players, Percent))
+                        {
+                            if (1.0 == g_LimitRocket)
+                                client_print(Player, print_chat, "* Rocket gun limit of %0.2f%% reached (%d or %0.2f%%), select a new gun.", g_LimitRocket, Players, Percent);
+                            else
+                                client_print(Player, print_chat, "* Rocket gun limit of 1 reached (%d or %0.2f%%), select a new gun.", Players, Percent);
+                        }
+                        else
+                        {
+                            ArrayGetString(g_Names, Gun, Name, charsmax(Name));
+                            client_print(Player, print_chat, "* Your gun selection updated: %s.", Name);
+                        }
+                    }
+                    else
+                    {
+                        ArrayGetString(g_Names, Gun, Name, charsmax(Name));
+                        client_print(Player, print_chat, "* Your gun selection updated: %s.", Name);
+                    }
+                }
+            }
         }
     }
 }
 #else
 public OnSqlSelection(FailState, Handle: Query, Error[], ErrorNum, Data[])
 {
-    static UniqueIndex, Player, Gun;
+    static UniqueIndex, Player, Gun, Players, Float: Percent, Name[32];
     if (Query != Empty_Handle && SQL_NumResults(Query) > 0)
     {
         UniqueIndex = str_to_num(Data);
@@ -553,9 +783,69 @@ public OnSqlSelection(FailState, Handle: Query, Error[], ErrorNum, Data[])
             {
                 Gun = SQL_ReadResult(Query, 0);
                 if (Gun < 0 || Gun >= g_WeaponsCount)
+                {
                     g_Gun[Player] = -1;
+                    if (g_InServer[Player])
+                        client_print(Player, print_chat, "* Operator altered gun menu entries, so your gun selection expired.");
+                }
                 else
+                {
                     g_Gun[Player] = Gun;
+                    if (g_InServer[Player])
+                    {
+                        ArrayGetString(g_Weapons, Gun, Name, charsmax(Name));
+                        if (F_IsSniper(Name))
+                        {
+                            if (F_SniperLimitReached(Player, g_Team[Player], Players, Percent))
+                            {
+                                if (1.0 == g_LimitSniper)
+                                    client_print(Player, print_chat, "* Sniper gun limit of %0.2f%% reached (%d or %0.2f%%), select a new gun.", g_LimitSniper, Players, Percent);
+                                else
+                                    client_print(Player, print_chat, "* Sniper gun limit of 1 reached (%d or %0.2f%%), select a new gun.", Players, Percent);
+                            }
+                            else
+                            {
+                                ArrayGetString(g_Names, Gun, Name, charsmax(Name));
+                                client_print(Player, print_chat, "* Your gun selection updated: %s.", Name);
+                            }
+                        }
+                        else if (F_IsMachine(Name))
+                        {
+                            if (F_MachineLimitReached(Player, g_Team[Player], Players, Percent))
+                            {
+                                if (1.0 == g_LimitMachine)
+                                    client_print(Player, print_chat, "* Machine gun limit of %0.2f%% reached (%d or %0.2f%%), select a new gun.", g_LimitMachine, Players, Percent);
+                                else
+                                    client_print(Player, print_chat, "* Machine gun limit of 1 reached (%d or %0.2f%%), select a new gun.", Players, Percent);
+                            }
+                            else
+                            {
+                                ArrayGetString(g_Names, Gun, Name, charsmax(Name));
+                                client_print(Player, print_chat, "* Your gun selection updated: %s.", Name);
+                            }
+                        }
+                        else if (F_IsRocket(Name))
+                        {
+                            if (F_RocketLimitReached(Player, g_Team[Player], Players, Percent))
+                            {
+                                if (1.0 == g_LimitRocket)
+                                    client_print(Player, print_chat, "* Rocket gun limit of %0.2f%% reached (%d or %0.2f%%), select a new gun.", g_LimitRocket, Players, Percent);
+                                else
+                                    client_print(Player, print_chat, "* Rocket gun limit of 1 reached (%d or %0.2f%%), select a new gun.", Players, Percent);
+                            }
+                            else
+                            {
+                                ArrayGetString(g_Names, Gun, Name, charsmax(Name));
+                                client_print(Player, print_chat, "* Your gun selection updated: %s.", Name);
+                            }
+                        }
+                        else
+                        {
+                            ArrayGetString(g_Names, Gun, Name, charsmax(Name));
+                            client_print(Player, print_chat, "* Your gun selection updated: %s.", Name);
+                        }
+                    }
+                }
                 break;
             }
         }
@@ -574,15 +864,17 @@ public DoD_OnGiveNamedItem(Player, Item[], ItemSize /** = 64 */, &OverrideRes)
 
 public DoD_OnGiveNamedItem_Post(Player, const Item[], Entity)
 { /// Perform weapon scoping if needed (fake players only).
+    static Class;
     if (!g_InSpawn[Player] || !g_Fake[Player] || Entity <= g_MaxPlayers)
         return PLUGIN_CONTINUE; /// Skip.
-    switch (g_Class[Player])
+    Class = pev(Player, pev_playerclass);
+    switch (Class)
     { /// Add a scope if needed (fake players).
         case DODC_SCOPED_FG42: /// Scoped FG42 (Axis).
-            if (equali(Item, "weapon_fg42"))
+            if (equali(Item[7], "fg42"))
                 DoD_AddScope(Entity, true);
         case DODC_MARKSMAN: /// Scoped Enfield (British).
-            if (equali(Item, "weapon_enfield"))
+            if (equali(Item[7], "enfield"))
                 DoD_AddScope(Entity, true);
     }
     return PLUGIN_CONTINUE;
@@ -735,8 +1027,8 @@ bool: F_HasPrimaryWeapon(Player, Weapon[], Size, &Entity)
 F_ZeroPlayerVars(Player)
 {
     g_Gun[Player] = -1;
+    g_Team[Player] = 0;
     g_Page[Player] = 0;
-    g_Class[Player] = 0;
     g_Fake[Player] = false;
     g_IsAuth[Player] = false;
     g_InSpawn[Player] = false;
@@ -770,4 +1062,136 @@ F_StoreSelection(Player)
                 g_Gun[Player], g_Steam[Player], g_Gun[Player]);
     }
     SQL_ThreadQuery(g_Sql, "EmptySqlHandler", g_Buffer);
+}
+
+F_PlayingPlayers(Team)
+{
+    static Player, Playing;
+    Playing = 0;
+    for (Player = 1; Player <= g_MaxPlayers; Player++)
+    {
+        if (Team != g_Team[Player])
+            continue;
+        Playing++;
+    }
+    return Playing;
+}
+
+bool: F_IsSniper(const Name[])
+    return equali(Name[7], "spring") || equali(Name[7], "scoped", 6);
+
+bool: F_IsMachine(const Name[])
+    return equali(Name[7], "30cal") || equali(Name[7], "mg", 2);
+
+bool: F_IsRocket(const Name[])
+    return equali(Name[7], "piat") || equali(Name[7], "bazooka") || equali(Name[7], "pschreck");
+
+F_PlayersOwningSniper(playerToSkip, Team)
+{
+    static Player, Players, Name[32], Class;
+    Players = 0;
+    for (Player = 1; Player <= g_MaxPlayers; Player++)
+    {
+        if (playerToSkip == Player || g_Team[Player] != Team)
+            continue;
+        if (g_Gun[Player] < 0)
+        {
+            if (g_UseFake && g_Fake[Player])
+            {
+                Class = pev(Player, pev_playerclass);
+                if (Class == DODC_SNIPER || DODC_MARKSMAN == Class || DODC_SCHARFSCHUTZE == Class)
+                    ++Players;
+            }
+            continue;
+        }
+        ArrayGetString(g_Weapons, g_Gun[Player], Name, charsmax(Name));
+        if (false == F_IsSniper(Name))
+            continue;
+        Players++;
+    }
+    return Players;
+}
+
+F_PlayersOwningMachine(playerToSkip, Team)
+{
+    static Player, Players, Name[32], Class;
+    Players = 0;
+    for (Player = 1; Player <= g_MaxPlayers; Player++)
+    {
+        if (playerToSkip == Player || g_Team[Player] != Team)
+            continue;
+        if (g_Gun[Player] < 0)
+        {
+            if (g_UseFake && g_Fake[Player])
+            {
+                Class = pev(Player, pev_playerclass);
+                if (Class == DODC_30CAL || DODC_MG34 == Class || DODC_MG42 == Class)
+                    ++Players;
+            }
+            continue;
+        }
+        ArrayGetString(g_Weapons, g_Gun[Player], Name, charsmax(Name));
+        if (false == F_IsMachine(Name))
+            continue;
+        Players++;
+    }
+    return Players;
+}
+
+F_PlayersOwningRocket(playerToSkip, Team)
+{
+    static Player, Players, Name[32], Class;
+    Players = 0;
+    for (Player = 1; Player <= g_MaxPlayers; Player++)
+    {
+        if (playerToSkip == Player || g_Team[Player] != Team)
+            continue;
+        if (g_Gun[Player] < 0)
+        {
+            if (g_UseFake && g_Fake[Player])
+            {
+                Class = pev(Player, pev_playerclass);
+                if (Class == DODC_PIAT || DODC_PANZERJAGER == Class || DODC_BAZOOKA == Class)
+                    ++Players;
+            }
+            continue;
+        }
+        ArrayGetString(g_Weapons, g_Gun[Player], Name, charsmax(Name));
+        if (false == F_IsRocket(Name))
+            continue;
+        Players++;
+    }
+    return Players;
+}
+
+bool: F_SniperLimitReached(PlayerToSkip, Team, &Players, &Float: Percent)
+{
+    Players = F_PlayersOwningSniper(PlayerToSkip, Team);
+    Percent = 100.0 * float(Players) / float(F_PlayingPlayers(Team));
+    return Percent >= g_LimitSniper;
+}
+
+bool: F_MachineLimitReached(PlayerToSkip, Team, &Players, &Float: Percent)
+{
+    Players = F_PlayersOwningMachine(PlayerToSkip, Team);
+    Percent = 100.0 * float(Players) / float(F_PlayingPlayers(Team));
+    return Percent >= g_LimitMachine;
+}
+
+bool: F_RocketLimitReached(PlayerToSkip, Team, &Players, &Float: Percent)
+{
+    Players = F_PlayersOwningRocket(PlayerToSkip, Team);
+    Percent = 100.0 * float(Players) / float(F_PlayingPlayers(Team));
+    return Percent >= g_LimitRocket;
+}
+
+F_EraseEntityFromDroppedGuns(Entity)
+{
+    static Entry;
+    Entry = ArrayFindValue(g_Dropped, Entity);
+    if (Entry > -1)
+    {
+        ArrayDeleteItem(g_Dropped, Entry);
+        ArrayDeleteItem(g_Times, Entry);
+    }
 }

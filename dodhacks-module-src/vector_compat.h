@@ -105,6 +105,14 @@ namespace SourceHook
             return true;
         }
 
+        bool hasVal(T val)
+        {
+            for (::size_t i = false; i < m_CurrentUsedSize; i++)
+                if (m_Data[i] == val)
+                    return true;
+            return false;
+        }
+
         void FreeMemIfPossible()
         {
             if (!m_Data)

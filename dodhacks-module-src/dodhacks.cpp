@@ -10,11 +10,16 @@
 #include <link.h>
 #endif
 
+#include <usercmd.h>
 #include <entity_state.h>
 #include <Memory.h>
 
-#define F_EToI(E) ((::size_t)       (E - ::g_pEntities))
-#define F_IToE(I) ((::edict_s *)    (::g_pEntities + I))
+#define DOD_BAR   ( 1 << 11 )
+#define DOD_MG42  ( 1 << 17 )
+#define DOD_30CAL ( 1 << 18 )
+#define DOD_MG34  ( 1 << 21 )
+#define DOD_FG42  ( 1 << 23 )
+#define DOD_BREN  ( 1 << 27 )
 
 enum DoD_Sig : unsigned char
 {
@@ -33,10 +38,16 @@ enum DoD_Sig : unsigned char
     PackWeapon,
     WpnBoxKill,
     WpnBoxActivateThink,
+    ChangePlayerTeam,
+    ChooseRandomClass,
+
     Create,
     InstallGameRules,
     UtilRemove,
     CreateNamedEntity,
+
+    Engine_CalcPing_New,
+    Engine_CalcPing_Old,
 
     PatchFg42,
     PatchEnfield,
@@ -47,6 +58,8 @@ enum DoD_Sig : unsigned char
     OrigEnfield_Byte,
     PatchEnfield_Byte,
 
+    Offs_Entvars,
+
     Offs_AlliesAreBrit,
     Offs_AlliesArePara,
     Offs_AxisArePara,
@@ -56,10 +69,16 @@ enum DoD_Sig : unsigned char
     Offs_AxisInfiniteLives,
 
     Offs_ItemScope,
+    Offs_CBasePlayerItem_Index,
     Offs_ApplyItemScope,
 
     Offs_ThinkFunc_Pfn,
     Offs_ThinkFunc_Delta,
+
+    Offs_CBasePlayer_NextClass,
+    Offs_CBasePlayer_RandomClass,
+    Offs_CBasePlayer_LastTeam,
+    Offs_CBasePlayer_ActiveItem,
 };
 
 enum DoD_Func : unsigned char
@@ -77,12 +96,22 @@ enum DoD_Func : unsigned char
     Fn_DestroyItem,
     Fn_SubRemove,
     Fn_PackWeapon,
-    Fn_InstallGameRules,
     Fn_WpnBoxKill,
     Fn_WpnBoxActivateThink,
+    Fn_ChangePlayerTeam,
+    Fn_ChooseRandomClass,
     Fn_Create,
+    Fn_InstallGameRules,
     Fn_UtilRemove,
     Fn_CreateNamedEntity,
+    Fn_Engine_CalcPing,
+};
+
+enum DoD_RandomClassAction : unsigned char
+{
+    DoD_RCA_None = false,
+    DoD_RCA_Add,
+    DoD_RCA_Remove,
 };
 
 enum DoD_Size : unsigned char
@@ -91,8 +120,8 @@ enum DoD_Size : unsigned char
     UInt8,
     Int16,
     UInt16,
-
     Int32,
+    UInt32,
 };
 
 #ifdef __linux__
@@ -121,11 +150,14 @@ typedef void(__thiscall* DoD_SubRemove_Type) (::size_t CBaseEntity);
 typedef int(__thiscall* DoD_PackWeapon_Type) (::size_t CWeaponBox, ::size_t CBasePlayerItem);
 typedef void(__thiscall* DoD_WpnBoxKill_Type) (::size_t CWeaponBox);
 typedef void(__thiscall* DoD_WpnBoxActivateThink_Type) (::size_t CWeaponBox);
+typedef void(__thiscall* DoD_ChangePlayerTeam_Type) (::size_t CDoDTeamPlay, ::size_t CBasePlayer, int Team, int Kill, int Gib);
+typedef void(__thiscall* DoD_ChooseRandomClass_Type) (::size_t CDoDTeamPlay, ::size_t CBasePlayer);
 
 typedef ::size_t(*DoD_Create_Type) (char* pItem, const ::Vector* pOrigin, const ::Vector* pAngles, ::edict_s* pOwner);
 typedef ::size_t(*DoD_InstallGameRules_Type) ();
 typedef void (*DoD_UtilRemove_Type) (::size_t CBaseEntity);
 typedef ::edict_s* (*DoD_CreateNamedEntity_Type) (::size_t Name);
+typedef int (*DoD_Engine_CalcPing_Type) (::size_t client_s);
 
 struct AllocatedString
 {
@@ -163,7 +195,15 @@ extern ::enginefuncs_s* g_pengfuncsTable_Post;
 extern ::NEW_DLL_FUNCTIONS* g_pNewFunctionsTable;
 extern ::NEW_DLL_FUNCTIONS* g_pNewFunctionsTable_Post;
 
+::edict_s* g_pEntities = NULL;
+::size_t g_entvarsOffs = false;
 ::size_t g_CDoDTeamPlay = false;
+::size_t g_svPlayerEngPtrs[33]{ };
+::size_t g_engConvOffs = ::size_t(-1);
+::enginefuncs_s* g_pEngineHookTable = NULL;
+::DLL_FUNCTIONS* g_pFunctionHookTable = NULL;
+::NEW_DLL_FUNCTIONS* g_pNewFunctionHookTable = NULL;
+::cvar_s g_Version{ "dodhacks_version", MODULE_VERSION " @ " MODULE_YEAR_MS, FCVAR_SERVER | FCVAR_SPONLY, };
 
 ::DoD_PlayerSpawn_Type DoD_PlayerSpawn = NULL;
 ::DoD_GiveNamedItem_Type DoD_GiveNamedItem = NULL;
@@ -183,7 +223,10 @@ extern ::NEW_DLL_FUNCTIONS* g_pNewFunctionsTable_Post;
 ::DoD_CreateNamedEntity_Type DoD_CreateNamedEntity = NULL;
 ::DoD_WpnBoxKill_Type DoD_WpnBoxKill = NULL;
 ::DoD_WpnBoxActivateThink_Type DoD_WpnBoxActivateThink = NULL;
+::DoD_ChangePlayerTeam_Type DoD_ChangePlayerTeam = NULL;
+::DoD_ChooseRandomClass_Type DoD_ChooseRandomClass = NULL;
 ::DoD_Create_Type DoD_Create = NULL;
+::DoD_Engine_CalcPing_Type DoD_Engine_CalcPing = NULL;
 
 bool g_DoDPlayerSpawn_Hook = false;
 bool g_DoDGiveNamedItem_Hook = false;
@@ -203,7 +246,10 @@ bool g_DoDUtilRemove_Hook = false;
 bool g_DoDCreateNamedEntity_Hook = false;
 bool g_DoDWpnBoxKill_Hook = false;
 bool g_DoDWpnBoxActivateThink_Hook = false;
+bool g_DoDChangePlayerTeam_Hook = false;
+bool g_DoDChooseRandomClass_Hook = false;
 bool g_DoDCreate_Hook = false;
+bool g_pDoDEngine_CalcPing_Hook = false;
 
 #ifdef __linux__
 ::subhook_t g_pDoDPlayerSpawn = NULL;
@@ -224,7 +270,10 @@ bool g_DoDCreate_Hook = false;
 ::subhook_t g_pDoDCreateNamedEntity = NULL;
 ::subhook_t g_pDoDWpnBoxKill = NULL;
 ::subhook_t g_pDoDWpnBoxActivateThink = NULL;
+::subhook_t g_pDoDChangePlayerTeam = NULL;
+::subhook_t g_pDoDChooseRandomClass = NULL;
 ::subhook_t g_pDoDCreate = NULL;
+::subhook_t g_pDoDEngine_CalcPing = NULL;
 #endif
 
 void* g_pDoDPlayerSpawn_Addr = NULL;
@@ -245,7 +294,10 @@ void* g_pDoDUtilRemove_Addr = NULL;
 void* g_pDoDCreateNamedEntity_Addr = NULL;
 void* g_pDoDWpnBoxKill_Addr = NULL;
 void* g_pDoDWpnBoxActivateThink_Addr = NULL;
+void* g_pDoDChangePlayerTeam_Addr = NULL;
+void* g_pDoDChooseRandomClass_Addr = NULL;
 void* g_pDoDCreate_Addr = NULL;
+void* g_pDoDEngine_CalcPing_Addr = NULL;
 
 int g_fwPlayerSpawn = false;
 int g_fwGiveNamedItem = false;
@@ -265,7 +317,10 @@ int g_fwUtilRemove = false;
 int g_fwCreateNamedEntity = false;
 int g_fwWpnBoxKill = false;
 int g_fwWpnBoxActivateThink = false;
+int g_fwChangePlayerTeam = false;
+int g_fwChooseRandomClass = false;
 int g_fwCreate = false;
+int g_fwEngine_CalcPing = false;
 
 int g_fwPlayerSpawn_Post = false;
 int g_fwGiveNamedItem_Post = false;
@@ -285,7 +340,10 @@ int g_fwUtilRemove_Post = false;
 int g_fwCreateNamedEntity_Post = false;
 int g_fwWpnBoxKill_Post = false;
 int g_fwWpnBoxActivateThink_Post = false;
+int g_fwChangePlayerTeam_Post = false;
+int g_fwChooseRandomClass_Post = false;
 int g_fwCreate_Post = false;
+int g_fwEngine_CalcPing_Post = false;
 
 unsigned char* g_pAutoScopeFG42Addr = NULL;
 unsigned char* g_pAutoScopeEnfieldAddr = NULL;
@@ -297,25 +355,136 @@ int g_selfNadeMode = false;
 int g_selfNadeFx = false;
 int g_selfNadeAmt = false;
 ::color24 g_selfNadeColor{ };
+bool g_exclSelfNadeGlow[33]{ };
 
 bool g_droppedNade = false;
-bool g_droppedDoArmed = false;
+bool g_droppedNadeDoArmed = false;
 bool g_droppedNadeDoSolid = false;
 short g_droppedNadeSolid = false;
 int g_droppedNadeMode = false;
 int g_droppedNadeFx = false;
 int g_droppedNadeAmt = false;
 ::color24 g_droppedNadeColor{ };
-
-bool g_exclFromDroppedExploNadeGlow[33]{ };
-bool g_exclFromExploNadeProjGlow[33]{ };
+bool g_exclDroppedNadeGlow[33]{ };
 
 ::SourceHook::CVector < ::SignatureData > g_Sigs{ };
 ::SourceHook::CVector < ::AllocatedString > g_Strings{ };
 ::SourceHook::CVector < ::CustomKeyValue_Add > g_CustomKeyValues_Add{ };
 ::SourceHook::CVector < ::CustomKeyValue_Del > g_CustomKeyValues_Del{ };
+::SourceHook::CVector < int > g_blockedFromPlayerCollision{ };
 
-::edict_s* g_pEntities = NULL;
+::size_t F_EToI(::edict_t* pEntity)
+{
+    return ::g_pEntities ? pEntity - ::g_pEntities : ::g_engfuncs.pfnIndexOfEdict(pEntity);
+}
+
+::edict_s* F_IToE(::size_t Entity)
+{
+    return ::g_pEntities ? ::g_pEntities + Entity : ::g_engfuncs.pfnPEntityOfEntIndex(Entity);
+}
+
+const char* teamNameByTeamIndex(int teamIndex, bool forAmx)
+{
+    switch (teamIndex)
+    { /** AMX Mod X does not use/ need strings like "Unassigned" and "Spectators". */
+    case 0:  return forAmx ? NULL : "Unassigned";
+    case 1:  return "Allies";
+    case 2:  return "Axis";
+    default: return forAmx ? NULL : "Spectators";
+    }
+}
+
+const char* classNameByClassIndex(int classIndex)
+{
+    switch (classIndex)
+    {
+        /** Allies classes. */
+    case 1:  return "Rifleman";
+    case 2:  return "Staff Sergeant";
+    case 3:  return "Master Sergeant";
+    case 4:  return "Sergeant";
+    case 5:  return "Sniper";
+    case 6:  return "Support Infantry";
+    case 7:  return "Machine Gunner";
+    case 8:  return "Bazooka";
+        /// case 9:  return "Mortar"; /// Allies Mortar. Not implemented.
+
+        /** Axis classes. */
+    case 10: return "Grenadier";
+    case 11: return "Stosstruppe";
+    case 12: return "Unteroffizier";
+    case 13: return "Sturmtruppe";
+    case 14: return "Scharfschütze";
+    case 15: return "Fg42-Zweibein";
+    case 16: return "Fg42-Zielfernrohr";
+    case 17: return "MG34-Schütze";
+    case 18: return "MG42-Schütze";
+    case 19: return "Panzerjäger";
+        /// case 20: return "Mörserschütze"; /// Axis Mortar. Not implemented.
+
+        /** British classes. */
+    case 21: return "Rifleman";
+    case 22: return "Sergeant Major";
+    case 23: return "Marksman";
+    case 24: return "Gunner";
+    case 25: return "PIAT";
+        /// case 26: return "Mortar"; /// British Mortar. Not implemented.
+
+    default: return "Random"; /// Unknown class or no class at all.
+    }
+}
+
+bool edict_s_Ptr_From_client_s_Ptr_Offs(::size_t client_s, ::size_t& Offs)
+{
+    ::edict_s* pPlayer;
+    ::size_t Iter = false;
+    unsigned char* pAddr = (unsigned char*)client_s, Player, Max = ::gpGlobals->maxClients;
+    for (Offs = false; Iter < UINT_MAX; Iter++)
+        for (pPlayer = *(::edict_s**)(pAddr + Iter), Player = 1; pPlayer && Player <= Max; Player++)
+            if (::F_IToE(Player) == pPlayer)
+            {
+                Offs = Iter;
+                return true;
+            }
+    return false;
+}
+
+void sendPClass(::edict_s* pPlayer, int Player, int Class)
+{
+    static auto PClass = ::gpMetaUtilFuncs->pfnGetUserMsgID(&::Plugin_info, "PClass", NULL);
+    ::g_engfuncs.pfnMessageBegin(pPlayer ? MSG_ONE_UNRELIABLE : MSG_BROADCAST, PClass, NULL, pPlayer);
+    ::g_engfuncs.pfnWriteByte(Player);
+    ::g_engfuncs.pfnWriteByte(Class);
+    ::g_engfuncs.pfnMessageEnd();
+}
+
+void sendTextMsg(::edict_s* pPlayer, const char* pPhrase, const char* pArg1, const char* pArg2, const char* pArg3, const char* pArg4)
+{
+    static auto TextMsg = ::gpMetaUtilFuncs->pfnGetUserMsgID(&::Plugin_info, "TextMsg", NULL);
+    ::g_engfuncs.pfnMessageBegin(pPlayer ? MSG_ONE_UNRELIABLE : MSG_BROADCAST, TextMsg, NULL, pPlayer);
+    ::g_engfuncs.pfnWriteByte(HUD_PRINTTALK);
+    ::g_engfuncs.pfnWriteString(pPhrase);
+    if (pArg1) ::g_engfuncs.pfnWriteString(pArg1);
+    if (pArg2) ::g_engfuncs.pfnWriteString(pArg2);
+    if (pArg3) ::g_engfuncs.pfnWriteString(pArg3);
+    if (pArg4) ::g_engfuncs.pfnWriteString(pArg4);
+    ::g_engfuncs.pfnMessageEnd();
+}
+
+bool playerActiveItem(::edict_s* pPlayer, int& activeItemIndex, bool& itemHasScopeAttached)
+{
+    activeItemIndex = false;
+    itemHasScopeAttached = false;
+    auto pPlayerBase = (unsigned char*)pPlayer->pvPrivateData;
+    if (!pPlayerBase)
+        return false;
+    auto pActiveItemBase = *(unsigned char**)(pPlayerBase + ::g_Sigs[::DoD_Sig::Offs_CBasePlayer_ActiveItem].Offs);
+    if (!pActiveItemBase)
+        return false;
+    activeItemIndex = (1 << *(int*)(pActiveItemBase + ::g_Sigs[::DoD_Sig::Offs_CBasePlayerItem_Index].Offs));
+    itemHasScopeAttached = *(::size_t*)(pActiveItemBase + ::g_Sigs[::DoD_Sig::Offs_ItemScope].Offs) & true;
+    return true;
+}
 
 ::size_t setupString(const char* pString)
 {
@@ -327,25 +496,25 @@ bool g_exclFromExploNadeProjGlow[33]{ };
 
     ::AllocatedString String;
     String.Buffer = pString;
-    String.Index = (*::g_engfuncs.pfnAllocString) (pString);
+    String.Index = ::g_engfuncs.pfnAllocString(pString);
     ::g_Strings.push_back(String);
     return String.Index;
 }
 
-void allowFullMemAccess ( void * pAddr, ::size_t Size )
+void allowFullMemAccess(void* pAddr, ::size_t Size)
 {
 #ifndef __linux__
     static unsigned long Access;
-    ::VirtualProtect ( pAddr, Size, PAGE_EXECUTE_READWRITE, &Access );
+    ::VirtualProtect(pAddr, Size, PAGE_EXECUTE_READWRITE, &Access);
 #else
     static long Page;
     static ::size_t Addr, Begin, End;
 
-    Addr = ( ::size_t ) pAddr;
-    Page = ::sysconf ( _SC_PAGESIZE ) - true;
+    Addr = (::size_t)pAddr;
+    Page = ::sysconf(_SC_PAGESIZE) - true;
     Begin = Addr & ~Page; /// Would turn '0xABC777AB' into '0xABC77000'.
-    End = ( Addr + Size + Page ) & ~Page; /// Would turn '0xABC777AB' into '0xABC78000', '0xABC79000', ...
-    ::mprotect ( Begin, End - Begin /** 0x1000(4096), 0x2000(8192), ... */, PROT_READ | PROT_WRITE | PROT_EXEC );
+    End = (Addr + Size + Page) & ~Page; /// Would turn '0xABC777AB' into '0xABC78000', '0xABC79000', ...
+    ::mprotect(Begin, End - Begin /** 0x1000(4096), 0x2000(8192), ... */, PROT_READ | PROT_WRITE | PROT_EXEC);
 #endif
 }
 
@@ -393,14 +562,14 @@ endOfFunc:
 void* openLib(const char* pName, ::DoD_Suffix Suffix)
 {
     /**
-     * Do not open a BOT library for sig. scanning if 'MDLL_Spawn' points into one.
+     * Do not open a BOT library for sig. scanning if '::gpGamedllFuncs->dllapi_table->pfnSpawn' points into one.
      * Use the Game library instead (i.e. 'dod.so' or 'dod_i386.so').
      * Linux only. On Windows, this filtering isn't needed.
      */
     ::Dl_info memInfo;
     if (::strcasestr(pName, "dod"))
     {
-        ::dladdr(MDLL_Spawn, &memInfo);
+        ::dladdr(::gpGamedllFuncs->dllapi_table->pfnSpawn, &memInfo);
         pName = memInfo.dli_fname;
         if (::strcasestr(pName, "bot"))
         {
@@ -415,7 +584,7 @@ void* openLib(const char* pName, ::DoD_Suffix Suffix)
     }
     else if (::strcasestr(pName, "mp") || ::strcasestr(pName, "cs"))
     {
-        ::dladdr(MDLL_Spawn, &memInfo);
+        ::dladdr(::gpGamedllFuncs->dllapi_table->pfnSpawn, &memInfo);
         pName = memInfo.dli_fname;
         if (::strcasestr(pName, "bot"))
         {
@@ -430,7 +599,7 @@ void* openLib(const char* pName, ::DoD_Suffix Suffix)
     }
     else if (::strcasestr(pName, "tfc"))
     {
-        ::dladdr(MDLL_Spawn, &memInfo);
+        ::dladdr(::gpGamedllFuncs->dllapi_table->pfnSpawn, &memInfo);
         pName = memInfo.dli_fname;
         if (::strcasestr(pName, "bot"))
         {
@@ -445,7 +614,7 @@ void* openLib(const char* pName, ::DoD_Suffix Suffix)
     }
     else if (::strcasestr(pName, "hl"))
     {
-        ::dladdr(MDLL_Spawn, &memInfo);
+        ::dladdr(::gpGamedllFuncs->dllapi_table->pfnSpawn, &memInfo);
         pName = memInfo.dli_fname;
         if (::strcasestr(pName, "bot"))
         {
@@ -460,7 +629,7 @@ void* openLib(const char* pName, ::DoD_Suffix Suffix)
     }
     else if (::strcasestr(pName, "dmc"))
     {
-        ::dladdr(MDLL_Spawn, &memInfo);
+        ::dladdr(::gpGamedllFuncs->dllapi_table->pfnSpawn, &memInfo);
         pName = memInfo.dli_fname;
         if (::strcasestr(pName, "bot"))
         {
@@ -475,7 +644,7 @@ void* openLib(const char* pName, ::DoD_Suffix Suffix)
     }
     else if (::strcasestr(pName, "ricochet"))
     {
-        ::dladdr(MDLL_Spawn, &memInfo);
+        ::dladdr(::gpGamedllFuncs->dllapi_table->pfnSpawn, &memInfo);
         pName = memInfo.dli_fname;
         if (::strcasestr(pName, "bot"))
         {
@@ -578,15 +747,15 @@ int baseToIndex(::size_t CBase)
     if (false == CBase)
         return -1;
 
-    ::entvars_s* pVars = *(::entvars_s**)(CBase + 4);
+    auto pVars = *(::entvars_s**)(CBase + ::g_entvarsOffs);
     if (!pVars)
         return -1;
 
-    ::edict_s* pEntity = pVars->pContainingEntity;
+    auto pEntity = pVars->pContainingEntity;
     if (!pEntity)
         return -1;
 
-    return ::ENTINDEX(pEntity);
+    return ::F_EToI(pEntity);
 }
 
 ::size_t indexToBase(int Index)
@@ -594,11 +763,11 @@ int baseToIndex(::size_t CBase)
     if (Index < 0 || Index > ::gpGlobals->maxEntities)
         return false;
 
-    ::edict_s* pEntity = ::INDEXENT(Index);
+    auto pEntity = ::F_IToE(Index);
     if (!pEntity)
         return false;
 
-    void* pBase = pEntity->pvPrivateData;
+    auto pBase = pEntity->pvPrivateData;
     if (!pBase)
         return false;
 
@@ -608,14 +777,15 @@ int baseToIndex(::size_t CBase)
 void ServerActivate(::edict_s* pEntities, int, int)
 {
     ::g_pEntities = pEntities;
-    RETURN_META(::MRES_IGNORED);
+    ::gpMetaGlobals->mres = ::META_RES::MRES_IGNORED;
 }
 
 void DispatchKeyValue(::edict_s* pEntity, ::KeyValueData* pKvData)
 {
     if (!pEntity)
     {
-        RETURN_META(::MRES_IGNORED);
+        ::gpMetaGlobals->mres = ::META_RES::MRES_IGNORED;
+        return;
     }
     ::KeyValueData keyValData;
     ::SourceHook::String Map = STRING(::gpGlobals->mapname);
@@ -647,7 +817,8 @@ void DispatchKeyValue(::edict_s* pEntity, ::KeyValueData* pKvData)
                 continue;
             }
             pKvData->fHandled = cusKeyVal.Handled;
-            RETURN_META(::MRES_SUPERCEDE);
+            ::gpMetaGlobals->mres = ::META_RES::MRES_SUPERCEDE;
+            return;
         }
         for (const auto& cusKeyVal : ::g_CustomKeyValues_Del)
         { /// If this is a key value that the user wants to remove, filter it out.
@@ -658,7 +829,8 @@ void DispatchKeyValue(::edict_s* pEntity, ::KeyValueData* pKvData)
             }
             if (cusKeyVal.Value.empty())
             { /// If there's no value specified by operator, delete it because it matched the key.
-                RETURN_META(::MRES_SUPERCEDE);
+                ::gpMetaGlobals->mres = ::META_RES::MRES_SUPERCEDE;
+                return;
             }
             if (!pKvData->szValue || false == *pKvData->szValue)
             { /// Operator wants to remove a specific non-empty value, skip this entry.
@@ -666,11 +838,12 @@ void DispatchKeyValue(::edict_s* pEntity, ::KeyValueData* pKvData)
             }
             if (false == cusKeyVal.Value.icmp(pKvData->szValue))
             { /// If the values matches too, delete this entry.
-                RETURN_META(::MRES_SUPERCEDE);
+                ::gpMetaGlobals->mres = ::META_RES::MRES_SUPERCEDE;
+                return;
             }
         }
     }
-    RETURN_META(::MRES_IGNORED);
+    ::gpMetaGlobals->mres = ::META_RES::MRES_IGNORED;
 }
 
 int AddToFullPack_Post(::entity_state_s* pState, int eIdx, ::edict_s* pEntity, ::edict_s* pHost, int hostFlags, int isPlayer, unsigned char* pSet)
@@ -679,8 +852,8 @@ int AddToFullPack_Post(::entity_state_s* pState, int eIdx, ::edict_s* pEntity, :
     static const char* pClass;
     if (pState && pHost && pEntity && !isPlayer)
     {
-        Host = (unsigned char)F_EToI(pHost);
-        if (::g_selfNade && !::g_exclFromExploNadeProjGlow[Host] && pHost == pEntity->v.owner &&
+        Host = (unsigned char) ::F_EToI(pHost);
+        if (::g_selfNade && !::g_exclSelfNadeGlow[Host] && pHost == pEntity->v.owner &&
             false == ::_strnicmp(STRING(pEntity->v.classname), "grenade", 7))
         {
             if (::g_selfNadeDoSolid)
@@ -690,10 +863,10 @@ int AddToFullPack_Post(::entity_state_s* pState, int eIdx, ::edict_s* pEntity, :
             pState->rendercolor = ::g_selfNadeColor;
             pState->renderamt = ::g_selfNadeAmt;
         }
-        else if (::g_droppedNade && !::g_exclFromDroppedExploNadeGlow[Host])
+        else if (::g_droppedNade && !::g_exclDroppedNadeGlow[Host])
         {
             pClass = STRING(pEntity->v.classname);
-            switch (::g_droppedDoArmed)
+            switch (::g_droppedNadeDoArmed)
             {
             case false:
             {
@@ -726,7 +899,80 @@ int AddToFullPack_Post(::entity_state_s* pState, int eIdx, ::edict_s* pEntity, :
             }
         }
     }
-    RETURN_META_VALUE(::MRES_IGNORED, false);
+    ::gpMetaGlobals->mres = ::META_RES::MRES_IGNORED;
+    return false;
+}
+
+int ShouldCollide(::edict_s* pEntity, ::edict_s* pOther)
+{
+    ::gpMetaGlobals->mres =
+        ((pEntity->v.flags & (FL_CLIENT | FL_FAKECLIENT)) && ::g_blockedFromPlayerCollision.hasVal(::F_EToI(pOther))) ||
+        ((pOther->v.flags & (FL_CLIENT | FL_FAKECLIENT)) && ::g_blockedFromPlayerCollision.hasVal(::F_EToI(pEntity))) ?
+        ::META_RES::MRES_SUPERCEDE : ::META_RES::MRES_IGNORED;
+    return false;
+}
+
+void CmdStart(::edict_s* pPlayer, ::usercmd_s* pCmd, ::size_t randomSeed)
+{
+    static int Item;
+    static bool scopeAttached;
+    static ::entvars_s* pVars;
+    pVars = &pPlayer->v;
+    if (!pVars->deadflag && pVars->health > 0.f)
+    {
+        if ((pVars->weapons & (DOD_BAR | DOD_MG42 | DOD_30CAL | DOD_MG34 | DOD_FG42 | DOD_BREN)) &&
+            ::playerActiveItem(pPlayer, Item, scopeAttached) && false == scopeAttached &&
+            (Item & (DOD_BAR | DOD_MG42 | DOD_30CAL | DOD_MG34 | DOD_FG42 | DOD_BREN)))
+        {
+            if (pVars->vuser1.x != 2.f)
+                pVars->vuser1.x = true;
+        }
+        else
+            pVars->vuser1.x = false;
+    }
+    ::gpMetaGlobals->mres = ::META_RES::MRES_IGNORED;
+}
+
+::cell DoD_HookShouldCollide_Native(::tagAMX* pAmx, ::cell* pParam)
+{
+    if (::g_pNewFunctionsTable->pfnShouldCollide)
+        return false;
+    ::g_pNewFunctionsTable->pfnShouldCollide = ::ShouldCollide;
+    return true;
+}
+
+::cell DoD_UnhookShouldCollide_Native(::tagAMX* pAmx, ::cell* pParam)
+{
+    if (!::g_pNewFunctionsTable->pfnShouldCollide)
+        return false;
+    ::g_pNewFunctionsTable->pfnShouldCollide = NULL;
+    if (pParam[1])
+        ::memset(&::g_blockedFromPlayerCollision, false, sizeof(::g_blockedFromPlayerCollision));
+    return true;
+}
+
+::cell DoD_BlockToPlayerCollision_Native(::tagAMX* pAmx, ::cell* pParam)
+{
+    const auto& Entity = pParam[1];
+    if (::g_blockedFromPlayerCollision.hasVal(Entity))
+        return false;
+    ::g_blockedFromPlayerCollision.insert(::g_blockedFromPlayerCollision.end(), Entity);
+    return true;
+}
+
+::cell DoD_UnblockFromPlayerCollision_Native(::tagAMX* pAmx, ::cell* pParam)
+{
+    const auto& Entity = pParam[1];
+    const auto& End = ::g_blockedFromPlayerCollision.end();
+    for (auto Iter = ::g_blockedFromPlayerCollision.begin(); Iter != End; Iter++)
+    {
+        if (*Iter == Entity)
+        {
+            ::g_blockedFromPlayerCollision.erase(Iter);
+            return true;
+        }
+    }
+    return false;
 }
 
 ::cell DoD_PlayerSpawn_Native(::tagAMX* pAmx, ::cell* pParam)
@@ -744,19 +990,13 @@ int AddToFullPack_Post(::entity_state_s* pState, int eIdx, ::edict_s* pEntity, :
     }
 
     auto Player = pParam[1];
-    if (Player < 1 || Player > ::gpGlobals->maxClients)
-    {
-        ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "Invalid player index %d!", Player);
-        return false;
-    }
-
     if (!::g_fn_IsPlayerValid(Player))
     {
         ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "Player %d is invalid!", Player);
         return false;
     }
 
-    auto pPlayer = ::g_fn_GetPlayerEdict(Player);
+    auto pPlayer = ::F_IToE(Player);
     if (!pPlayer)
     {
         ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "Player %d has no edict!", Player);
@@ -782,21 +1022,25 @@ int AddToFullPack_Post(::entity_state_s* pState, int eIdx, ::edict_s* pEntity, :
     return true;
 }
 
-::cell DoD_RemoveAllItems_Native(::tagAMX* pAmx, ::cell* pParam)
+::cell DoD_ChooseRandomClass_Native(::tagAMX* pAmx, ::cell* pParam)
 {
-    if (!::g_pDoDRemoveAllItems_Addr)
+    auto pRes = ::g_fn_GetAmxAddr(pAmx, pParam[2]);
+    if (pRes)
+        *pRes = -1;
+
+    if (!::g_pDoDChooseRandomClass_Addr)
     {
-        ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "Signature for ::DoD_RemoveAllItems not found!");
+        ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "Signature for ::DoD_ChooseRandomClass not found!");
+        return false;
+    }
+
+    if (false == ::g_CDoDTeamPlay)
+    {
+        ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "::CDoDTeamPlay (Game Rules) pointer is null at the moment!");
         return false;
     }
 
     auto Player = pParam[1];
-    if (Player < 1 || Player > ::gpGlobals->maxClients)
-    {
-        ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "Invalid player index %d!", Player);
-        return false;
-    }
-
     if (!::g_fn_IsPlayerValid(Player))
     {
         ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "Player %d is invalid!", Player);
@@ -808,7 +1052,143 @@ int AddToFullPack_Post(::entity_state_s* pState, int eIdx, ::edict_s* pEntity, :
         return false;
     }
 
-    auto pPlayer = ::g_fn_GetPlayerEdict(Player);
+    auto pPlayer = ::F_IToE(Player);
+    if (!pPlayer)
+    {
+        ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "Player %d has no edict!", Player);
+        return false;
+    }
+
+    auto pBase = pPlayer->pvPrivateData;
+    if (!pBase)
+    {
+        ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "Player %d has no private data!", Player);
+        return false;
+    }
+
+    if (pParam[8])
+        ((::DoD_ChooseRandomClass_Type) ::g_pDoDChooseRandomClass_Addr) (::g_CDoDTeamPlay, (::size_t)pBase);
+    else
+    {
+        if (::g_DoDChooseRandomClass_Hook)
+            ::DoD_ChooseRandomClass(::g_CDoDTeamPlay, (::size_t)pBase);
+        else
+            ((::DoD_ChooseRandomClass_Type) ::g_pDoDChooseRandomClass_Addr) (::g_CDoDTeamPlay, (::size_t)pBase);
+    }
+    auto Class = *(::cell*)(((unsigned char*)pBase) + ::g_Sigs[::DoD_Sig::Offs_CBasePlayer_NextClass].Offs);
+    if (pRes)
+        *pRes = Class;
+    if (pParam[3])
+        pPlayer->v.playerclass = Class;
+    if (pParam[4])
+        ::sendPClass(NULL, Player, Class);
+    if (pParam[5])
+    {
+        if (pParam[6])
+            ::sendTextMsg(pPlayer, pPlayer->v.deadflag || pPlayer->v.health <= 0.f ? "#game_respawn_asrandom" : "#game_spawn_asrandom",
+                ::classNameByClassIndex(Class), NULL, NULL, NULL);
+        else
+            ::sendTextMsg(pPlayer, pPlayer->v.deadflag || pPlayer->v.health <= 0.f ? "#game_respawn_as" : "#game_spawn_as",
+                ::classNameByClassIndex(Class), NULL, NULL, NULL);
+    }
+    switch (::DoD_RandomClassAction(pParam[7]))
+    {
+    case ::DoD_RandomClassAction::DoD_RCA_Add:
+    {
+        *(int*)(((unsigned char*)pBase) + ::g_Sigs[::DoD_Sig::Offs_CBasePlayer_RandomClass].Offs) = true;
+        break;
+    }
+    case ::DoD_RandomClassAction::DoD_RCA_Remove:
+    {
+        *(int*)(((unsigned char*)pBase) + ::g_Sigs[::DoD_Sig::Offs_CBasePlayer_RandomClass].Offs) = false;
+        break;
+    }
+    }
+    return true;
+}
+
+::cell DoD_ChangePlayerTeam_Native(::tagAMX* pAmx, ::cell* pParam)
+{
+    if (!::g_pDoDChangePlayerTeam_Addr)
+    {
+        ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "Signature for ::DoD_ChangePlayerTeam not found!");
+        return false;
+    }
+
+    if (false == ::g_CDoDTeamPlay)
+    {
+        ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "::CDoDTeamPlay (Game Rules) pointer is null at the moment!");
+        return false;
+    }
+
+    auto Player = pParam[1];
+    if (!::g_fn_IsPlayerValid(Player))
+    {
+        ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "Player %d is invalid!", Player);
+        return false;
+    }
+    if (!::g_fn_IsPlayerIngame(Player))
+    {
+        ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "Player %d is not in-game!", Player);
+        return false;
+    }
+
+    auto pPlayer = ::F_IToE(Player);
+    if (!pPlayer)
+    {
+        ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "Player %d has no edict!", Player);
+        return false;
+    }
+
+    auto pBase = pPlayer->pvPrivateData;
+    if (!pBase)
+    {
+        ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "Player %d has no private data!", Player);
+        return false;
+    }
+
+    auto Team = pParam[2];
+    if (pParam[9])
+        ((::DoD_ChangePlayerTeam_Type) ::g_pDoDChangePlayerTeam_Addr) (::g_CDoDTeamPlay, (::size_t)pBase, Team, pParam[3], pParam[4]);
+    else
+    {
+        if (::g_DoDChangePlayerTeam_Hook)
+            ::DoD_ChangePlayerTeam(::g_CDoDTeamPlay, (::size_t)pBase, Team, pParam[3], pParam[4]);
+        else
+            ((::DoD_ChangePlayerTeam_Type) ::g_pDoDChangePlayerTeam_Addr) (::g_CDoDTeamPlay, (::size_t)pBase, Team, pParam[3], pParam[4]);
+    }
+    if (pParam[5])
+        pPlayer->v.team = Team;
+    if (pParam[6])
+        ::g_fn_SetTeamInfo(Player, Team, ::teamNameByTeamIndex(Team, true));
+    if (pParam[7])
+        ::sendTextMsg(NULL, "#game_joined_team", STRING(pPlayer->v.netname), ::teamNameByTeamIndex(Team, false), NULL, NULL);
+    if (pParam[8])
+        *(int*)(((unsigned char*)pBase) + ::g_Sigs[::DoD_Sig::Offs_CBasePlayer_LastTeam].Offs) = true;
+    return true;
+}
+
+::cell DoD_RemoveAllItems_Native(::tagAMX* pAmx, ::cell* pParam)
+{
+    if (!::g_pDoDRemoveAllItems_Addr)
+    {
+        ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "Signature for ::DoD_RemoveAllItems not found!");
+        return false;
+    }
+
+    auto Player = pParam[1];
+    if (!::g_fn_IsPlayerValid(Player))
+    {
+        ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "Player %d is invalid!", Player);
+        return false;
+    }
+    if (!::g_fn_IsPlayerIngame(Player))
+    {
+        ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "Player %d is not in-game!", Player);
+        return false;
+    }
+
+    auto pPlayer = ::F_IToE(Player);
     if (!pPlayer)
     {
         ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "Player %d has no edict!", Player);
@@ -849,7 +1229,7 @@ int AddToFullPack_Post(::entity_state_s* pState, int eIdx, ::edict_s* pEntity, :
         return false;
     }
 
-    auto pEntity = ::INDEXENT(Entity);
+    auto pEntity = ::F_IToE(Entity);
     if (!pEntity)
     {
         ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "Entity %d has no edict!", Entity);
@@ -901,14 +1281,14 @@ int AddToFullPack_Post(::entity_state_s* pState, int eIdx, ::edict_s* pEntity, :
         return false;
     }
 
-    auto pEntity = ::INDEXENT(Entity);
+    auto pEntity = ::F_IToE(Entity);
     if (!pEntity)
     {
         ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "Entity (weaponbox) %d has no edict!", Entity);
         return false;
     }
 
-    auto pWeapon = ::INDEXENT(Weapon);
+    auto pWeapon = ::F_IToE(Weapon);
     if (!pWeapon)
     {
         ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "Entity (weapon) %d has no edict!", Weapon);
@@ -971,7 +1351,7 @@ int AddToFullPack_Post(::entity_state_s* pState, int eIdx, ::edict_s* pEntity, :
         return false;
     }
 
-    auto pEntity = ::INDEXENT(Entity);
+    auto pEntity = ::F_IToE(Entity);
     if (!pEntity)
     {
         ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "Entity %d has no edict!", Entity);
@@ -1012,7 +1392,7 @@ int AddToFullPack_Post(::entity_state_s* pState, int eIdx, ::edict_s* pEntity, :
         return false;
     }
 
-    auto pEntity = ::INDEXENT(Entity);
+    auto pEntity = ::F_IToE(Entity);
     if (!pEntity)
     {
         ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "Entity %d has no edict!", Entity);
@@ -1069,7 +1449,7 @@ int AddToFullPack_Post(::entity_state_s* pState, int eIdx, ::edict_s* pEntity, :
             pEntity = ((::DoD_CreateNamedEntity_Type) ::g_pDoDCreateNamedEntity_Addr) (::setupString(pName));
     }
     if (pRes && pEntity)
-        *pRes = ::ENTINDEX(pEntity);
+        *pRes = ::F_EToI(pEntity);
     return true;
 }
 
@@ -1108,7 +1488,7 @@ int AddToFullPack_Post(::entity_state_s* pState, int eIdx, ::edict_s* pEntity, :
         return false;
     }
 
-    auto pEntity = ::INDEXENT(Entity);
+    auto pEntity = ::F_IToE(Entity);
     if (!pEntity)
     {
         ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "Entity %d has no edict!", Entity);
@@ -1149,7 +1529,7 @@ int AddToFullPack_Post(::entity_state_s* pState, int eIdx, ::edict_s* pEntity, :
         return false;
     }
 
-    auto pEntity = ::INDEXENT(Entity);
+    auto pEntity = ::F_IToE(Entity);
     if (!pEntity)
     {
         ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "Entity %d has no edict!", Entity);
@@ -1199,7 +1579,7 @@ int AddToFullPack_Post(::entity_state_s* pState, int eIdx, ::edict_s* pEntity, :
     ::cell* pOrigin = ::g_fn_GetAmxAddr(pAmx, pParam[2]);
     ::cell* pAngles = ::g_fn_GetAmxAddr(pAmx, pParam[3]);
     ::cell Owner = pParam[4];
-    ::edict_s* pOwner = ((Owner < 0 || Owner > ::gpGlobals->maxEntities) ? NULL : ::INDEXENT(Owner));
+    ::edict_s* pOwner = ((Owner < 0 || Owner > ::gpGlobals->maxEntities) ? NULL : ::F_IToE(Owner));
     ::Vector Origin = !pOrigin ?
         ::Vector(false, false, false) :
         ::Vector(::g_fn_CellToReal(pOrigin[0]), ::g_fn_CellToReal(pOrigin[1]), ::g_fn_CellToReal(pOrigin[2]));
@@ -1234,13 +1614,6 @@ int AddToFullPack_Post(::entity_state_s* pState, int eIdx, ::edict_s* pEntity, :
         return false;
     }
 
-    auto Player = pParam[1];
-    if (Player < 1 || Player > ::gpGlobals->maxClients)
-    {
-        ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "Invalid player index %d!", Player);
-        return false;
-    }
-
     int Len;
     auto pItem = ::g_fn_GetAmxString(pAmx, pParam[2], false, &Len);
     if (Len < 1 || !pItem || false == *pItem)
@@ -1249,6 +1622,7 @@ int AddToFullPack_Post(::entity_state_s* pState, int eIdx, ::edict_s* pEntity, :
         return false;
     }
 
+    auto Player = pParam[1];
     if (!::g_fn_IsPlayerValid(Player))
     {
         ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "Player %d is invalid!", Player);
@@ -1265,7 +1639,7 @@ int AddToFullPack_Post(::entity_state_s* pState, int eIdx, ::edict_s* pEntity, :
         return false;
     }
 
-    auto pPlayer = ::g_fn_GetPlayerEdict(Player);
+    auto pPlayer = ::F_IToE(Player);
     if (!pPlayer)
     {
         ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "Player %d has no edict!", Player);
@@ -1294,9 +1668,9 @@ int AddToFullPack_Post(::entity_state_s* pState, int eIdx, ::edict_s* pEntity, :
         if (pEntity)
         {
             auto pItemBase = (::size_t*)pEntity->pvPrivateData;
-            if (pItemBase && !(*(::size_t*)((unsigned char*)pItemBase + ::g_Sigs[::DoD_Sig::Offs_ItemScope].Offs) & 1u))
+            if (pItemBase && !(*(::size_t*)((unsigned char*)pItemBase + ::g_Sigs[::DoD_Sig::Offs_ItemScope].Offs) & true))
             {
-                *(::size_t*)((unsigned char*)pItemBase + ::g_Sigs[::DoD_Sig::Offs_ItemScope].Offs) |= 1u;
+                *(::size_t*)((unsigned char*)pItemBase + ::g_Sigs[::DoD_Sig::Offs_ItemScope].Offs) |= true;
                 (*(void(__thiscall**) (::size_t*)) (*pItemBase + ::g_Sigs[::DoD_Sig::Offs_ApplyItemScope].Offs)) (pItemBase);
             }
         }
@@ -1315,9 +1689,9 @@ int AddToFullPack_Post(::entity_state_s* pState, int eIdx, ::edict_s* pEntity, :
         if (pEntity)
         {
             auto pItemBase = (::size_t*)pEntity->pvPrivateData;
-            if (pItemBase && !(*(::size_t*)((unsigned char*)pItemBase + ::g_Sigs[::DoD_Sig::Offs_ItemScope].Offs) & 1u))
+            if (pItemBase && !(*(::size_t*)((unsigned char*)pItemBase + ::g_Sigs[::DoD_Sig::Offs_ItemScope].Offs) & true))
             {
-                *(::size_t*)((unsigned char*)pItemBase + ::g_Sigs[::DoD_Sig::Offs_ItemScope].Offs) |= 1u;
+                *(::size_t*)((unsigned char*)pItemBase + ::g_Sigs[::DoD_Sig::Offs_ItemScope].Offs) |= true;
                 (*(void(__thiscall**) (::size_t*)) (*pItemBase + ::g_Sigs[::DoD_Sig::Offs_ApplyItemScope].Offs)) (pItemBase);
             }
         }
@@ -1336,7 +1710,7 @@ int AddToFullPack_Post(::entity_state_s* pState, int eIdx, ::edict_s* pEntity, :
     }
 
     if (pItemRes && pEntity)
-        *pItemRes = ::cell(::ENTINDEX(pEntity));
+        *pItemRes = ::cell(::F_EToI(pEntity));
     return true;
 }
 
@@ -1348,13 +1722,6 @@ int AddToFullPack_Post(::entity_state_s* pState, int eIdx, ::edict_s* pEntity, :
         return false;
     }
 
-    auto Player = pParam[1];
-    if (Player < 1 || Player > ::gpGlobals->maxClients)
-    {
-        ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "Invalid player index %d!", Player);
-        return false;
-    }
-
     int Len;
     auto pItem = ::g_fn_GetAmxString(pAmx, pParam[2], false, &Len);
     if (!pItem)
@@ -1363,6 +1730,7 @@ int AddToFullPack_Post(::entity_state_s* pState, int eIdx, ::edict_s* pEntity, :
         return false;
     }
 
+    auto Player = pParam[1];
     if (!::g_fn_IsPlayerValid(Player))
     {
         ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "Player %d is invalid!", Player);
@@ -1374,7 +1742,7 @@ int AddToFullPack_Post(::entity_state_s* pState, int eIdx, ::edict_s* pEntity, :
         return false;
     }
 
-    auto pPlayer = ::g_fn_GetPlayerEdict(Player);
+    auto pPlayer = ::F_IToE(Player);
     if (!pPlayer)
     {
         ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "Player %d has no edict!", Player);
@@ -1415,7 +1783,7 @@ int AddToFullPack_Post(::entity_state_s* pState, int eIdx, ::edict_s* pEntity, :
         return false;
     }
 
-    auto pEntity = ::INDEXENT(Entity);
+    auto pEntity = ::F_IToE(Entity);
     if (!pEntity)
     {
         ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "Entity %d has no edict!", Entity);
@@ -1453,13 +1821,6 @@ int AddToFullPack_Post(::entity_state_s* pState, int eIdx, ::edict_s* pEntity, :
         return false;
     }
 
-    auto Player = pParam[1];
-    if (Player < 1 || Player > ::gpGlobals->maxClients)
-    {
-        ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "Invalid player index %d!", Player);
-        return false;
-    }
-
     int Len;
     auto pName = ::g_fn_GetAmxString(pAmx, pParam[3], false, &Len);
     if (Len < 1 || !pName || false == *pName)
@@ -1468,6 +1829,7 @@ int AddToFullPack_Post(::entity_state_s* pState, int eIdx, ::edict_s* pEntity, :
         return false;
     }
 
+    auto Player = pParam[1];
     if (!::g_fn_IsPlayerValid(Player))
     {
         ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "Player %d is invalid!", Player);
@@ -1484,7 +1846,7 @@ int AddToFullPack_Post(::entity_state_s* pState, int eIdx, ::edict_s* pEntity, :
         return false;
     }
 
-    auto pPlayer = ::g_fn_GetPlayerEdict(Player);
+    auto pPlayer = ::F_IToE(Player);
     if (!pPlayer)
     {
         ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "Player %d has no edict!", Player);
@@ -1525,6 +1887,61 @@ int AddToFullPack_Post(::entity_state_s* pState, int eIdx, ::edict_s* pEntity, :
     return true;
 }
 
+::cell DoD_TraceLine_Native(::tagAMX* pAmx, ::cell* pParam)
+{
+    static ::TraceResult Trace;
+    auto pFrom = ::g_fn_GetAmxAddr(pAmx, pParam[1]);
+    auto pTo = ::g_fn_GetAmxAddr(pAmx, pParam[2]);
+    auto From = pFrom ?
+        ::Vector(::g_fn_CellToReal(pFrom[0]), ::g_fn_CellToReal(pFrom[1]), ::g_fn_CellToReal(pFrom[2])) :
+        ::Vector(false, false, false);
+    auto To = pTo ?
+        ::Vector(::g_fn_CellToReal(pTo[0]), ::g_fn_CellToReal(pTo[1]), ::g_fn_CellToReal(pTo[2])) :
+        ::Vector(false, false, false);
+    auto Skip = pParam[4];
+    auto pSkip = Skip < 0 || Skip > ::gpGlobals->maxEntities ? NULL : ::F_IToE(Skip);
+    ::g_pEngineHookTable->pfnTraceLine(&From.x, &To.x, pParam[3], pSkip, &Trace);
+    return true;
+}
+
+::cell DoD_TraceLineComplex_Native(::tagAMX* pAmx, ::cell* pParam)
+{
+    static ::TraceResult Trace;
+    auto pFrom = ::g_fn_GetAmxAddr(pAmx, pParam[1]);
+    auto pTo = ::g_fn_GetAmxAddr(pAmx, pParam[2]);
+    auto From = pFrom ?
+        ::Vector(::g_fn_CellToReal(pFrom[0]), ::g_fn_CellToReal(pFrom[1]), ::g_fn_CellToReal(pFrom[2])) :
+        ::Vector(false, false, false);
+    auto To = pTo ?
+        ::Vector(::g_fn_CellToReal(pTo[0]), ::g_fn_CellToReal(pTo[1]), ::g_fn_CellToReal(pTo[2])) :
+        ::Vector(false, false, false);
+    auto Skip = pParam[4];
+    auto pSkip = Skip < 0 || Skip > ::gpGlobals->maxEntities ? NULL : ::F_IToE(Skip);
+    if (bool(pParam[6]))
+        ::g_pEngineHookTable->pfnTraceLine(&From.x, &To.x, pParam[3], pSkip, &Trace);
+    else
+        TRACE_LINE(&From.x, &To.x, pParam[3], pSkip, &Trace);
+    auto pRes = ::g_fn_GetAmxAddr(pAmx, pParam[5]);
+    if (pRes)
+    {
+        *pRes = Trace.fAllSolid;
+        *(::cell*)(pRes + 1) = Trace.fStartSolid;
+        *(::cell*)(pRes + 2) = Trace.fInOpen;
+        *(::cell*)(pRes + 3) = Trace.fInWater;
+        *(::cell*)(pRes + 4) = ::g_fn_RealToCell(Trace.flFraction);
+        *(::cell*)(pRes + 5) = ::g_fn_RealToCell(Trace.vecEndPos.x);
+        *(::cell*)(pRes + 6) = ::g_fn_RealToCell(Trace.vecEndPos.y);
+        *(::cell*)(pRes + 7) = ::g_fn_RealToCell(Trace.vecEndPos.z);
+        *(::cell*)(pRes + 8) = ::g_fn_RealToCell(Trace.flPlaneDist);
+        *(::cell*)(pRes + 9) = ::g_fn_RealToCell(Trace.vecPlaneNormal.x);
+        *(::cell*)(pRes + 10) = ::g_fn_RealToCell(Trace.vecPlaneNormal.y);
+        *(::cell*)(pRes + 11) = ::g_fn_RealToCell(Trace.vecPlaneNormal.z);
+        *(::cell*)(pRes + 12) = Trace.pHit ? ::F_EToI(Trace.pHit) : -1;
+        *(::cell*)(pRes + 13) = Trace.iHitgroup;
+    }
+    return true;
+}
+
 ::cell DoD_AddHealthIfWounded_Native(::tagAMX* pAmx, ::cell* pParam)
 {
     auto pAdded = ::g_fn_GetAmxAddr(pAmx, pParam[3]);
@@ -1532,12 +1949,6 @@ int AddToFullPack_Post(::entity_state_s* pState, int eIdx, ::edict_s* pEntity, :
         *pAdded = false;
 
     auto Player = pParam[1];
-    if (Player < 1 || Player > ::gpGlobals->maxClients)
-    {
-        ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "Invalid player index %d!", Player);
-        return false;
-    }
-
     if (!::g_fn_IsPlayerValid(Player))
     {
         ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "Player %d is invalid!", Player);
@@ -1551,7 +1962,7 @@ int AddToFullPack_Post(::entity_state_s* pState, int eIdx, ::edict_s* pEntity, :
     if (!::g_fn_IsPlayerAlive(Player))
         return false;
 
-    auto pPlayer = ::g_fn_GetPlayerEdict(Player);
+    auto pPlayer = ::F_IToE(Player);
     if (!pPlayer)
     {
         ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "Player %d has no edict!", Player);
@@ -1576,12 +1987,6 @@ int AddToFullPack_Post(::entity_state_s* pState, int eIdx, ::edict_s* pEntity, :
 ::cell DoD_IsPlayerFullHealth_Native(::tagAMX* pAmx, ::cell* pParam)
 {
     auto Player = pParam[1];
-    if (Player < 1 || Player > ::gpGlobals->maxClients)
-    {
-        ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "Invalid player index %d!", Player);
-        return false;
-    }
-
     if (!::g_fn_IsPlayerValid(Player))
     {
         ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "Player %d is invalid!", Player);
@@ -1595,7 +2000,7 @@ int AddToFullPack_Post(::entity_state_s* pState, int eIdx, ::edict_s* pEntity, :
     if (!::g_fn_IsPlayerAlive(Player))
         return false;
 
-    auto pPlayer = ::g_fn_GetPlayerEdict(Player);
+    auto pPlayer = ::F_IToE(Player);
     if (!pPlayer)
     {
         ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "Player %d has no edict!", Player);
@@ -1618,12 +2023,6 @@ int AddToFullPack_Post(::entity_state_s* pState, int eIdx, ::edict_s* pEntity, :
     }
 
     auto Player = pParam[1];
-    if (Player < 1 || Player > ::gpGlobals->maxClients)
-    {
-        ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "Invalid player index %d!", Player);
-        return false;
-    }
-
     if (!::g_fn_IsPlayerValid(Player))
     {
         ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "Player %d is invalid!", Player);
@@ -1635,7 +2034,7 @@ int AddToFullPack_Post(::entity_state_s* pState, int eIdx, ::edict_s* pEntity, :
         return false;
     }
 
-    auto pPlayer = ::g_fn_GetPlayerEdict(Player);
+    auto pPlayer = ::F_IToE(Player);
     if (!pPlayer)
     {
         ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "Player %d has no edict!", Player);
@@ -1656,7 +2055,7 @@ int AddToFullPack_Post(::entity_state_s* pState, int eIdx, ::edict_s* pEntity, :
         return false;
     }
 
-    auto pItem = ::INDEXENT(Item);
+    auto pItem = ::F_IToE(Item);
     if (!pItem)
     {
         ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "Item %d has no edict!", Item);
@@ -1700,12 +2099,6 @@ int AddToFullPack_Post(::entity_state_s* pState, int eIdx, ::edict_s* pEntity, :
     }
 
     auto Player = pParam[1];
-    if (Player < 1 || Player > ::gpGlobals->maxClients)
-    {
-        ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "Invalid player index %d!", Player);
-        return false;
-    }
-
     if (!::g_fn_IsPlayerValid(Player))
     {
         ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "Player %d is invalid!", Player);
@@ -1717,7 +2110,7 @@ int AddToFullPack_Post(::entity_state_s* pState, int eIdx, ::edict_s* pEntity, :
         return false;
     }
 
-    auto pPlayer = ::g_fn_GetPlayerEdict(Player);
+    auto pPlayer = ::F_IToE(Player);
     if (!pPlayer)
     {
         ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "Player %d has no edict!", Player);
@@ -1738,7 +2131,7 @@ int AddToFullPack_Post(::entity_state_s* pState, int eIdx, ::edict_s* pEntity, :
         return false;
     }
 
-    auto pItem = ::INDEXENT(Item);
+    auto pItem = ::F_IToE(Item);
     if (!pItem)
     {
         ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "Item %d has no edict!", Item);
@@ -1769,6 +2162,52 @@ int AddToFullPack_Post(::entity_state_s* pState, int eIdx, ::edict_s* pEntity, :
     return true;
 }
 
+::cell DoD_Engine_CalcPing_Native(::tagAMX* pAmx, ::cell* pParam)
+{
+    auto pRes = ::g_fn_GetAmxAddr(pAmx, pParam[2]);
+    if (pRes)
+        *pRes = -1;
+
+    if (!::g_pDoDEngine_CalcPing_Addr)
+    {
+        ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "Signature for ::DoD_Engine_CalcPing not found!");
+        return false;
+    }
+    if (::size_t(-1) == ::g_engConvOffs)
+    {
+        ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "Conversion offset (from ::client_s* to ::edict_t*) for ::DoD_Engine_CalcPing not found or not yet ready!");
+        return false;
+    }
+
+    auto Player = pParam[1];
+    if (!::g_fn_IsPlayerValid(Player))
+    {
+        ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "Player %d is invalid!", Player);
+        return false;
+    }
+    if (false == ::g_svPlayerEngPtrs[Player])
+    {
+        ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "Engine not yet ready to reveal the ping of player %d!", Player);
+        return false;
+    }
+
+    if (pRes)
+    {
+        if (pParam[3] || false == ::g_pDoDEngine_CalcPing_Hook)
+            *pRes = ((::DoD_Engine_CalcPing_Type) ::g_pDoDEngine_CalcPing_Addr) (::g_svPlayerEngPtrs[Player]);
+        else
+            *pRes = ::DoD_Engine_CalcPing(::g_svPlayerEngPtrs[Player]);
+    }
+    else
+    {
+        if (pParam[3] || false == ::g_pDoDEngine_CalcPing_Hook)
+            ((::DoD_Engine_CalcPing_Type) ::g_pDoDEngine_CalcPing_Addr) (::g_svPlayerEngPtrs[Player]);
+        else
+            ::DoD_Engine_CalcPing(::g_svPlayerEngPtrs[Player]);
+    }
+    return true;
+}
+
 ::cell DoD_HasScope_Native(::tagAMX* pAmx, ::cell* pParam)
 {
     auto Item = pParam[1];
@@ -1778,7 +2217,7 @@ int AddToFullPack_Post(::entity_state_s* pState, int eIdx, ::edict_s* pEntity, :
         return false;
     }
 
-    auto pItem = ::INDEXENT(Item);
+    auto pItem = ::F_IToE(Item);
     if (!pItem)
     {
         ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "Item %d has no edict!", Item);
@@ -1792,7 +2231,7 @@ int AddToFullPack_Post(::entity_state_s* pState, int eIdx, ::edict_s* pEntity, :
         return false;
     }
 
-    return *(::size_t*)((unsigned char*)pItemBase + ::g_Sigs[::DoD_Sig::Offs_ItemScope].Offs) & 1u;
+    return *(::size_t*)((unsigned char*)pItemBase + ::g_Sigs[::DoD_Sig::Offs_ItemScope].Offs) & true;
 }
 
 ::cell DoD_AddScope_Native(::tagAMX* pAmx, ::cell* pParam)
@@ -1804,7 +2243,7 @@ int AddToFullPack_Post(::entity_state_s* pState, int eIdx, ::edict_s* pEntity, :
         return false;
     }
 
-    auto pItem = ::INDEXENT(Item);
+    auto pItem = ::F_IToE(Item);
     if (!pItem)
     {
         ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "Item %d has no edict!", Item);
@@ -1818,9 +2257,9 @@ int AddToFullPack_Post(::entity_state_s* pState, int eIdx, ::edict_s* pEntity, :
         return false;
     }
 
-    if (!(*(::size_t*)((unsigned char*)pItemBase + ::g_Sigs[::DoD_Sig::Offs_ItemScope].Offs) & 1u))
+    if (!(*(::size_t*)((unsigned char*)pItemBase + ::g_Sigs[::DoD_Sig::Offs_ItemScope].Offs) & true))
     {
-        *(::size_t*)((unsigned char*)pItemBase + ::g_Sigs[::DoD_Sig::Offs_ItemScope].Offs) |= 1u;
+        *(::size_t*)((unsigned char*)pItemBase + ::g_Sigs[::DoD_Sig::Offs_ItemScope].Offs) |= true;
         if (pParam[2])
             (*(void(__thiscall**) (::size_t*)) (*pItemBase + ::g_Sigs[::DoD_Sig::Offs_ApplyItemScope].Offs)) (pItemBase);
     }
@@ -1836,7 +2275,7 @@ int AddToFullPack_Post(::entity_state_s* pState, int eIdx, ::edict_s* pEntity, :
         return false;
     }
 
-    auto pItem = ::INDEXENT(Item);
+    auto pItem = ::F_IToE(Item);
     if (!pItem)
     {
         ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "Item %d has no edict!", Item);
@@ -1892,11 +2331,11 @@ int AddToFullPack_Post(::entity_state_s* pState, int eIdx, ::edict_s* pEntity, :
         return false;
     }
     ::size_t Addr = false;
-    auto pImgDosHdr = (::_IMAGE_DOS_HEADER*)memInfo.AllocationBase;
-    auto pImgNtHdr = (::_IMAGE_NT_HEADERS*)((::size_t)pImgDosHdr + (::size_t)pImgDosHdr->e_lfanew);
+    auto pDosHdr = (::_IMAGE_DOS_HEADER*)memInfo.AllocationBase;
+    auto pNtHdr = (::_IMAGE_NT_HEADERS*)((::size_t)pDosHdr + (::size_t)pDosHdr->e_lfanew);
     ::SourceHook::CVector < unsigned char > Signature;
     ::vectorizeSignature(pSig, Signature);
-    auto Res = ::findInMemory((unsigned char*)pImgDosHdr, pImgNtHdr->OptionalHeader.SizeOfImage, Signature, &Addr, pParam[3]);
+    auto Res = ::findInMemory((unsigned char*)pDosHdr, pNtHdr->OptionalHeader.SizeOfImage, Signature, &Addr, pParam[3]);
     if (Res && pAddr)
         *pAddr = Addr;
     if (Opened)
@@ -1942,6 +2381,7 @@ int AddToFullPack_Post(::entity_state_s* pState, int eIdx, ::edict_s* pEntity, :
 
 ::cell DoD_AddExploNadeProjGlow_Native(::tagAMX* pAmx, ::cell* pParam)
 {
+    bool Res = !::g_selfNade;
     ::g_selfNade = true;
     ::g_selfNadeMode = pParam[1];
     ::g_selfNadeFx = pParam[2];
@@ -1961,8 +2401,9 @@ int AddToFullPack_Post(::entity_state_s* pState, int eIdx, ::edict_s* pEntity, :
     ::g_selfNadeAmt = pParam[4];
     ::g_selfNadeSolid = short(pParam[5]);
     ::g_selfNadeDoSolid = bool(pParam[6]);
-    ::g_pFunctionTable_Post->pfnAddToFullPack = ::AddToFullPack_Post;
-    return true;
+    if (!::g_pFunctionTable_Post->pfnAddToFullPack)
+        ::g_pFunctionTable_Post->pfnAddToFullPack = ::AddToFullPack_Post;
+    return Res;
 }
 
 ::cell DoD_DelExploNadeProjGlow_Native(::tagAMX* pAmx, ::cell* pParam)
@@ -1970,7 +2411,7 @@ int AddToFullPack_Post(::entity_state_s* pState, int eIdx, ::edict_s* pEntity, :
     if (::g_selfNade)
     {
         ::g_selfNade = false;
-        if (!::g_droppedNade)
+        if (!::g_droppedNade && ::g_pFunctionTable_Post->pfnAddToFullPack)
             ::g_pFunctionTable_Post->pfnAddToFullPack = NULL;
         return true;
     }
@@ -1979,8 +2420,9 @@ int AddToFullPack_Post(::entity_state_s* pState, int eIdx, ::edict_s* pEntity, :
 
 ::cell DoD_AddDroppedExploNadeGlow_Native(::tagAMX* pAmx, ::cell* pParam)
 {
+    bool Res = !::g_droppedNade;
     ::g_droppedNade = true;
-    ::g_droppedDoArmed = bool(pParam[1]);
+    ::g_droppedNadeDoArmed = bool(pParam[1]);
     ::g_droppedNadeMode = pParam[2];
     ::g_droppedNadeFx = pParam[3];
     auto pColor = ::g_fn_GetAmxAddr(pAmx, pParam[4]);
@@ -1999,8 +2441,9 @@ int AddToFullPack_Post(::entity_state_s* pState, int eIdx, ::edict_s* pEntity, :
     ::g_droppedNadeAmt = pParam[5];
     ::g_droppedNadeSolid = short(pParam[6]);
     ::g_droppedNadeDoSolid = bool(pParam[7]);
-    ::g_pFunctionTable_Post->pfnAddToFullPack = ::AddToFullPack_Post;
-    return true;
+    if (!::g_pFunctionTable_Post->pfnAddToFullPack)
+        ::g_pFunctionTable_Post->pfnAddToFullPack = ::AddToFullPack_Post;
+    return Res;
 }
 
 ::cell DoD_DelDroppedExploNadeGlow_Native(::tagAMX* pAmx, ::cell* pParam)
@@ -2008,7 +2451,7 @@ int AddToFullPack_Post(::entity_state_s* pState, int eIdx, ::edict_s* pEntity, :
     if (::g_droppedNade)
     {
         ::g_droppedNade = false;
-        if (!::g_selfNade)
+        if (!::g_selfNade && ::g_pFunctionTable_Post->pfnAddToFullPack)
             ::g_pFunctionTable_Post->pfnAddToFullPack = NULL;
         return true;
     }
@@ -2023,7 +2466,7 @@ int AddToFullPack_Post(::entity_state_s* pState, int eIdx, ::edict_s* pEntity, :
         ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "Invalid player index %d!", Player);
         return false;
     }
-    ::g_exclFromDroppedExploNadeGlow[Player] = bool(pParam[2]);
+    ::g_exclDroppedNadeGlow[Player] = bool(pParam[2]);
     return true;
 }
 
@@ -2035,7 +2478,7 @@ int AddToFullPack_Post(::entity_state_s* pState, int eIdx, ::edict_s* pEntity, :
         ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "Invalid player index %d!", Player);
         return false;
     }
-    return ::g_exclFromDroppedExploNadeGlow[Player];
+    return ::g_exclDroppedNadeGlow[Player];
 }
 
 ::cell DoD_SetExploNadeProjGlow_Native(::tagAMX* pAmx, ::cell* pParam)
@@ -2046,7 +2489,7 @@ int AddToFullPack_Post(::entity_state_s* pState, int eIdx, ::edict_s* pEntity, :
         ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "Invalid player index %d!", Player);
         return false;
     }
-    ::g_exclFromExploNadeProjGlow[Player] = bool(pParam[2]);
+    ::g_exclSelfNadeGlow[Player] = bool(pParam[2]);
     return true;
 }
 
@@ -2058,7 +2501,7 @@ int AddToFullPack_Post(::entity_state_s* pState, int eIdx, ::edict_s* pEntity, :
         ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "Invalid player index %d!", Player);
         return false;
     }
-    return ::g_exclFromExploNadeProjGlow[Player];
+    return ::g_exclSelfNadeGlow[Player];
 }
 
 ::cell DoD_FindSymbol_Native(::tagAMX* pAmx, ::cell* pParam)
@@ -2123,6 +2566,39 @@ int AddToFullPack_Post(::entity_state_s* pState, int eIdx, ::edict_s* pEntity, :
 #endif
 }
 
+::cell DoD_StoreFloatToAddress_Native(::tagAMX* pAmx, ::cell* pParam)
+{
+    auto Addr = (::size_t)pParam[1];
+    if (Addr < 1)
+    {
+        ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "Invalid memory address provided!");
+        return false;
+    }
+
+    ::allowFullMemAccess((void*)Addr, sizeof(float));
+    *(float*)Addr = ::g_fn_CellToReal(pParam[2]);
+    return true;
+}
+
+::cell DoD_ReadFloatFromAddress_Native(::tagAMX* pAmx, ::cell* pParam)
+{
+    auto pRes = ::g_fn_GetAmxAddr(pAmx, pParam[2]);
+    if (pRes)
+        *pRes = false;
+
+    auto Addr = (::size_t)pParam[1];
+    if (Addr < 1)
+    {
+        ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "Invalid memory address provided!");
+        return false;
+    }
+
+    auto Res = (::cell) ::g_fn_RealToCell(*(float*)Addr);
+    if (pRes)
+        *pRes = Res;
+    return true;
+}
+
 ::cell DoD_StoreToAddress_Native(::tagAMX* pAmx, ::cell* pParam)
 {
     ::size_t Addr = (::size_t)pParam[1];
@@ -2136,31 +2612,37 @@ int AddToFullPack_Post(::entity_state_s* pState, int eIdx, ::edict_s* pEntity, :
     case ::DoD_Size::Int8:
     {
         ::allowFullMemAccess((void*)Addr, true);
-        * (signed char*)Addr = (signed char)pParam[2];
+        *(signed char*)Addr = (signed char)pParam[2];
         return true;
     }
     case ::DoD_Size::UInt8:
     {
         ::allowFullMemAccess((void*)Addr, true);
-        * (unsigned char*)Addr = (unsigned char)pParam[2];
+        *(unsigned char*)Addr = (unsigned char)pParam[2];
         return true;
     }
     case ::DoD_Size::Int16:
     {
-        ::allowFullMemAccess((void*)Addr, sizeof (short));
-        * (signed short*)Addr = (signed short)pParam[2];
+        ::allowFullMemAccess((void*)Addr, sizeof(short));
+        *(signed short*)Addr = (signed short)pParam[2];
         return true;
     }
     case ::DoD_Size::UInt16:
     {
-        ::allowFullMemAccess((void*)Addr, sizeof (short));
-        * (unsigned short*)Addr = (unsigned short)pParam[2];
+        ::allowFullMemAccess((void*)Addr, sizeof(short));
+        *(unsigned short*)Addr = (unsigned short)pParam[2];
         return true;
     }
     case ::DoD_Size::Int32:
     {
-        ::allowFullMemAccess((void*)Addr, sizeof (int));
-        * (signed int*)Addr = (signed int)pParam[2];
+        ::allowFullMemAccess((void*)Addr, sizeof(int));
+        *(signed int*)Addr = (signed int)pParam[2];
+        return true;
+    }
+    case ::DoD_Size::UInt32:
+    {
+        ::allowFullMemAccess((void*)Addr, sizeof(::size_t));
+        *(::size_t*)Addr = (::size_t)pParam[2];
         return true;
     }
     }
@@ -2220,6 +2702,13 @@ int AddToFullPack_Post(::entity_state_s* pState, int eIdx, ::edict_s* pEntity, :
             *pRes = Res;
         return true;
     }
+    case ::DoD_Size::UInt32:
+    {
+        Res = (::cell) * (::size_t*)Addr;
+        if (pRes)
+            *pRes = Res;
+        return true;
+    }
     }
     ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "Invalid memory size provided!");
     return false;
@@ -2241,7 +2730,7 @@ int AddToFullPack_Post(::entity_state_s* pState, int eIdx, ::edict_s* pEntity, :
         return false;
     }
 
-    auto pEntity = ::INDEXENT(Entity);
+    auto pEntity = ::F_IToE(Entity);
     if (!pEntity)
     {
         ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "Entity %d has no edict!", Entity);
@@ -2276,7 +2765,7 @@ int AddToFullPack_Post(::entity_state_s* pState, int eIdx, ::edict_s* pEntity, :
         return false;
     }
 
-    auto pEntity = ::INDEXENT(Entity);
+    auto pEntity = ::F_IToE(Entity);
     if (!pEntity)
     {
         ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "Entity %d has no edict!", Entity);
@@ -2418,8 +2907,8 @@ int AddToFullPack_Post(::entity_state_s* pState, int eIdx, ::edict_s* pEntity, :
         return false;
     }
 
-    auto pAddr = (float*)(::g_CDoDTeamPlay + ::g_Sigs[::DoD_Sig::Offs_AxisRespawnFactor].Offs);
-    return ::g_fn_RealToCell(*pAddr);
+    auto pAddr = (unsigned char*) ::g_CDoDTeamPlay;
+    return ::g_fn_RealToCell(*(float*)(pAddr + ::g_Sigs[::DoD_Sig::Offs_AxisRespawnFactor].Offs));
 }
 
 ::cell DoD_GetAlliesRespawnFactor_Native(::tagAMX* pAmx, ::cell* pParam)
@@ -2430,8 +2919,8 @@ int AddToFullPack_Post(::entity_state_s* pState, int eIdx, ::edict_s* pEntity, :
         return false;
     }
 
-    auto pAddr = (float*)(::g_CDoDTeamPlay + ::g_Sigs[::DoD_Sig::Offs_AlliesRespawnFactor].Offs);
-    return ::g_fn_RealToCell(*pAddr);
+    auto pAddr = (unsigned char*) ::g_CDoDTeamPlay;
+    return ::g_fn_RealToCell(*(float*)(pAddr + ::g_Sigs[::DoD_Sig::Offs_AlliesRespawnFactor].Offs));
 }
 
 ::cell DoD_ReadGameRulesBool_Native(::tagAMX* pAmx, ::cell* pParam)
@@ -2443,7 +2932,120 @@ int AddToFullPack_Post(::entity_state_s* pState, int eIdx, ::edict_s* pEntity, :
     }
 
     auto pAddr = (unsigned char*)(::g_CDoDTeamPlay);
-    return *(pAddr + pParam[1]);
+    return bool(*(pAddr + pParam[1]));
+}
+
+::cell DoD_StoreGameRulesBool_Native(::tagAMX* pAmx, ::cell* pParam)
+{
+    if (false == ::g_CDoDTeamPlay)
+    {
+        ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "::CDoDTeamPlay (Game Rules) pointer is null at the moment!");
+        return false;
+    }
+
+    auto pAddr = (unsigned char*)(::g_CDoDTeamPlay);
+    *(pAddr + pParam[1]) = bool(pParam[2]);
+    return true;
+}
+
+::cell DoD_ReadGameRulesByte_Native(::tagAMX* pAmx, ::cell* pParam)
+{
+    if (false == ::g_CDoDTeamPlay)
+    {
+        ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "::CDoDTeamPlay (Game Rules) pointer is null at the moment!");
+        return false;
+    }
+
+    auto pAddr = (unsigned char*) ::g_CDoDTeamPlay;
+    return *(char*)(pAddr + pParam[1]);
+}
+
+::cell DoD_StoreGameRulesByte_Native(::tagAMX* pAmx, ::cell* pParam)
+{
+    if (false == ::g_CDoDTeamPlay)
+    {
+        ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "::CDoDTeamPlay (Game Rules) pointer is null at the moment!");
+        return false;
+    }
+
+    auto pAddr = (unsigned char*) ::g_CDoDTeamPlay;
+    *(char*)(pAddr + pParam[1]) = char(pParam[2]);
+    return true;
+}
+
+::cell DoD_ReadGameRulesUByte_Native(::tagAMX* pAmx, ::cell* pParam)
+{
+    if (false == ::g_CDoDTeamPlay)
+    {
+        ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "::CDoDTeamPlay (Game Rules) pointer is null at the moment!");
+        return false;
+    }
+
+    auto pAddr = (unsigned char*) ::g_CDoDTeamPlay;
+    return *(unsigned char*)(pAddr + pParam[1]);
+}
+
+::cell DoD_StoreGameRulesUByte_Native(::tagAMX* pAmx, ::cell* pParam)
+{
+    if (false == ::g_CDoDTeamPlay)
+    {
+        ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "::CDoDTeamPlay (Game Rules) pointer is null at the moment!");
+        return false;
+    }
+
+    auto pAddr = (unsigned char*) ::g_CDoDTeamPlay;
+    *(unsigned char*)(pAddr + pParam[1]) = (unsigned char)pParam[2];
+    return true;
+}
+
+::cell DoD_ReadGameRulesShort_Native(::tagAMX* pAmx, ::cell* pParam)
+{
+    if (false == ::g_CDoDTeamPlay)
+    {
+        ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "::CDoDTeamPlay (Game Rules) pointer is null at the moment!");
+        return false;
+    }
+
+    auto pAddr = (unsigned char*) ::g_CDoDTeamPlay;
+    return *(short*)(pAddr + pParam[1]);
+}
+
+::cell DoD_StoreGameRulesShort_Native(::tagAMX* pAmx, ::cell* pParam)
+{
+    if (false == ::g_CDoDTeamPlay)
+    {
+        ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "::CDoDTeamPlay (Game Rules) pointer is null at the moment!");
+        return false;
+    }
+
+    auto pAddr = (unsigned char*) ::g_CDoDTeamPlay;
+    *(short*)(pAddr + pParam[1]) = short(pParam[2]);
+    return true;
+}
+
+::cell DoD_ReadGameRulesUShort_Native(::tagAMX* pAmx, ::cell* pParam)
+{
+    if (false == ::g_CDoDTeamPlay)
+    {
+        ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "::CDoDTeamPlay (Game Rules) pointer is null at the moment!");
+        return false;
+    }
+
+    auto pAddr = (unsigned char*) ::g_CDoDTeamPlay;
+    return *(unsigned short*)(pAddr + pParam[1]);
+}
+
+::cell DoD_StoreGameRulesUShort_Native(::tagAMX* pAmx, ::cell* pParam)
+{
+    if (false == ::g_CDoDTeamPlay)
+    {
+        ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "::CDoDTeamPlay (Game Rules) pointer is null at the moment!");
+        return false;
+    }
+
+    auto pAddr = (unsigned char*) ::g_CDoDTeamPlay;
+    *(unsigned short*)(pAddr + pParam[1]) = (unsigned short)pParam[2];
+    return true;
 }
 
 ::cell DoD_ReadGameRulesInt_Native(::tagAMX* pAmx, ::cell* pParam)
@@ -2454,8 +3056,46 @@ int AddToFullPack_Post(::entity_state_s* pState, int eIdx, ::edict_s* pEntity, :
         return false;
     }
 
-    auto pAddr = (::size_t*)(::g_CDoDTeamPlay + pParam[1]);
-    return (::cell)*pAddr;
+    auto pAddr = (unsigned char*) ::g_CDoDTeamPlay;
+    return *(::cell*)(pAddr + pParam[1]);
+}
+
+::cell DoD_StoreGameRulesInt_Native(::tagAMX* pAmx, ::cell* pParam)
+{
+    if (false == ::g_CDoDTeamPlay)
+    {
+        ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "::CDoDTeamPlay (Game Rules) pointer is null at the moment!");
+        return false;
+    }
+
+    auto pAddr = (unsigned char*) ::g_CDoDTeamPlay;
+    *(::cell*)(pAddr + pParam[1]) = ::cell(pParam[2]);
+    return true;
+}
+
+::cell DoD_ReadGameRulesUInt_Native(::tagAMX* pAmx, ::cell* pParam)
+{
+    if (false == ::g_CDoDTeamPlay)
+    {
+        ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "::CDoDTeamPlay (Game Rules) pointer is null at the moment!");
+        return false;
+    }
+
+    auto pAddr = (unsigned char*) ::g_CDoDTeamPlay;
+    return *(::size_t*)(pAddr + pParam[1]);
+}
+
+::cell DoD_StoreGameRulesUInt_Native(::tagAMX* pAmx, ::cell* pParam)
+{
+    if (false == ::g_CDoDTeamPlay)
+    {
+        ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "::CDoDTeamPlay (Game Rules) pointer is null at the moment!");
+        return false;
+    }
+
+    auto pAddr = (unsigned char*) ::g_CDoDTeamPlay;
+    *(::size_t*)(pAddr + pParam[1]) = (::size_t)pParam[2];
+    return true;
 }
 
 ::cell DoD_ReadGameRulesFloat_Native(::tagAMX* pAmx, ::cell* pParam)
@@ -2466,8 +3106,21 @@ int AddToFullPack_Post(::entity_state_s* pState, int eIdx, ::edict_s* pEntity, :
         return false;
     }
 
-    auto pAddr = (float*)(::g_CDoDTeamPlay + pParam[1]);
-    return ::g_fn_RealToCell(*pAddr);
+    auto pAddr = (unsigned char*) ::g_CDoDTeamPlay;
+    return ::g_fn_RealToCell(*(float*)(pAddr + pParam[1]));
+}
+
+::cell DoD_StoreGameRulesFloat_Native(::tagAMX* pAmx, ::cell* pParam)
+{
+    if (false == ::g_CDoDTeamPlay)
+    {
+        ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "::CDoDTeamPlay (Game Rules) pointer is null at the moment!");
+        return false;
+    }
+
+    auto pAddr = (unsigned char*) ::g_CDoDTeamPlay;
+    *(float*)(pAddr + pParam[1]) = ::g_fn_CellToReal(pParam[2]);
+    return true;
 }
 
 ::cell DoD_ReadGameRulesStr_Native(::tagAMX* pAmx, ::cell* pParam)
@@ -2486,6 +3139,56 @@ int AddToFullPack_Post(::entity_state_s* pState, int eIdx, ::edict_s* pEntity, :
     if (pParam[5])
         return ::g_fn_SetAmxStringUTF8Char(pAmx, pParam[3], Buffer.c_str(), Buffer.size(), pParam[4]);
     return ::g_fn_SetAmxString(pAmx, pParam[3], Buffer.c_str(), pParam[4]);
+}
+
+::cell DoD_StoreGameRulesStr_Native(::tagAMX* pAmx, ::cell* pParam)
+{
+    if (false == ::g_CDoDTeamPlay)
+    {
+        ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "::CDoDTeamPlay (Game Rules) pointer is null at the moment!");
+        return false;
+    }
+
+    int Len;
+    auto pString = ::g_fn_GetAmxString(pAmx, pParam[2], false, &Len);
+    auto pAddr = (unsigned char*) ::g_CDoDTeamPlay;
+    if (Len < 1 || !pString || false == *pString)
+        *(pAddr + pParam[1]) = false;
+    else
+    {
+        ::size_t Iter = false;
+        for (; Iter < (::size_t)Len; Iter++)
+            *(pAddr + pParam[1] + Iter) = pString[Iter];
+        *(pAddr + pParam[1] + Iter) = false;
+    }
+    return true;
+}
+
+::cell DoD_ClassIndexToName_Native(::tagAMX* pAmx, ::cell* pParam)
+{
+    if (pParam[4])
+    {
+        const auto pName = ::classNameByClassIndex(pParam[1]);
+        return ::g_fn_SetAmxStringUTF8Char(pAmx, pParam[2], pName, ::strlen(pName), pParam[3]);
+    }
+    return ::g_fn_SetAmxString(pAmx, pParam[2], ::classNameByClassIndex(pParam[1]), pParam[3]);
+}
+
+::cell DoD_TeamIndexToName_Native(::tagAMX* pAmx, ::cell* pParam)
+{
+    auto Team = pParam[1];
+    if (Team < 0 || Team > 3)
+    {
+        ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "Invalid team index %d!", Team);
+        return false;
+    }
+
+    if (pParam[4])
+    {
+        const auto pName = ::teamNameByTeamIndex(Team, false);
+        return ::g_fn_SetAmxStringUTF8Char(pAmx, pParam[2], pName, ::strlen(pName), pParam[3]);
+    }
+    return ::g_fn_SetAmxString(pAmx, pParam[2], ::classNameByClassIndex(Team), pParam[3]);
 }
 
 ::cell DoD_IsWeaponPrimary_Native(::tagAMX* pAmx, ::cell* pParam)
@@ -2595,6 +3298,81 @@ int AddToFullPack_Post(::entity_state_s* pState, int eIdx, ::edict_s* pEntity, :
             return true;
     }
     return false;
+}
+
+::cell DoD_AddAdvancedDeploy_Native(::tagAMX* pAmx, ::cell* pParam)
+{
+    if (::g_pFunctionTable->pfnCmdStart)
+        return false;
+    ::g_pFunctionTable->pfnCmdStart = (decltype (::g_pFunctionTable->pfnCmdStart)) ::CmdStart;
+    return true;
+}
+
+::cell DoD_DelAdvancedDeploy_Native(::tagAMX* pAmx, ::cell* pParam)
+{
+    if (!::g_pFunctionTable->pfnCmdStart)
+        return false;
+    ::g_pFunctionTable->pfnCmdStart = NULL;
+    for (int Item, Player = 1; Player <= ::gpGlobals->maxClients; Player++)
+    {
+        auto pPlayer = ::F_IToE(Player);
+        if (pPlayer && !pPlayer->v.deadflag && pPlayer->v.health > 0.f)
+        {
+            bool scopeAttached;
+            if ((pPlayer->v.weapons & (DOD_BAR | DOD_MG42 | DOD_30CAL | DOD_MG34 | DOD_FG42 | DOD_BREN)) &&
+                ::playerActiveItem(pPlayer, Item, scopeAttached) && false == scopeAttached &&
+                (Item & (DOD_BAR | DOD_MG42 | DOD_30CAL | DOD_MG34 | DOD_FG42 | DOD_BREN)))
+            {
+                if (2.f != pPlayer->v.vuser1.x)
+                    pPlayer->v.vuser1.x = false;
+            }
+            else
+                pPlayer->v.vuser1.x = false;
+        }
+    }
+    return true;
+}
+
+::cell DoD_PlayerOwnsDeployableGun_Native(::tagAMX* pAmx, ::cell* pParam)
+{
+    auto Player = pParam[1];
+    if (!::g_fn_IsPlayerValid(Player))
+    {
+        ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "Player %d is invalid!", Player);
+        return false;
+    }
+
+    auto pPlayer = ::F_IToE(Player);
+    if (!pPlayer)
+    {
+        ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "Player %d has no edict!", Player);
+        return false;
+    }
+    return (pPlayer->v.weapons & (DOD_BAR | DOD_MG42 | DOD_30CAL | DOD_MG34 | DOD_FG42 | DOD_BREN));
+}
+
+::cell DoD_PlayerHoldsDeployableGun_Native(::tagAMX* pAmx, ::cell* pParam)
+{
+    auto Player = pParam[1];
+    if (!::g_fn_IsPlayerValid(Player))
+    {
+        ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "Player %d is invalid!", Player);
+        return false;
+    }
+
+    auto pPlayer = ::F_IToE(Player);
+    if (!pPlayer)
+    {
+        ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "Player %d has no edict!", Player);
+        return false;
+    }
+    if (!(pPlayer->v.weapons & (DOD_BAR | DOD_MG42 | DOD_30CAL | DOD_MG34 | DOD_FG42 | DOD_BREN)))
+        return false;
+    int Item;
+    bool scopeAttached;
+    if (!::playerActiveItem(pPlayer, Item, scopeAttached) || scopeAttached)
+        return false;
+    return (Item & (DOD_BAR | DOD_MG42 | DOD_30CAL | DOD_MG34 | DOD_FG42 | DOD_BREN));
 }
 
 ::cell DoD_AddKeyValDel_Native(::tagAMX* pAmx, ::cell* pParam)
@@ -2758,12 +3536,15 @@ int AddToFullPack_Post(::entity_state_s* pState, int eIdx, ::edict_s* pEntity, :
         case ::DoD_Func::Fn_DestroyItem: return (::cell) ::g_pDoDDestroyItem_Addr;
         case ::DoD_Func::Fn_SubRemove: return (::cell) ::g_pDoDSubRemove_Addr;
         case ::DoD_Func::Fn_PackWeapon: return (::cell) ::g_pDoDPackWeapon_Addr;
+        case ::DoD_Func::Fn_WpnBoxKill: return (::cell) ::g_pDoDWpnBoxKill_Addr;
+        case ::DoD_Func::Fn_WpnBoxActivateThink: return (::cell) ::g_pDoDWpnBoxActivateThink_Addr;
+        case ::DoD_Func::Fn_ChangePlayerTeam: return (::cell) ::g_pDoDChangePlayerTeam_Addr;
+        case ::DoD_Func::Fn_ChooseRandomClass: return (::cell) ::g_pDoDChooseRandomClass_Addr;
+        case ::DoD_Func::Fn_Create: return (::cell) ::g_pDoDCreate_Addr;
         case ::DoD_Func::Fn_InstallGameRules: return (::cell) ::g_pDoDInstallGameRules_Addr;
         case ::DoD_Func::Fn_UtilRemove: return (::cell) ::g_pDoDUtilRemove_Addr;
         case ::DoD_Func::Fn_CreateNamedEntity: return (::cell) ::g_pDoDCreateNamedEntity_Addr;
-        case ::DoD_Func::Fn_Create: return (::cell) ::g_pDoDCreate_Addr;
-        case ::DoD_Func::Fn_WpnBoxKill: return (::cell) ::g_pDoDWpnBoxKill_Addr;
-        case ::DoD_Func::Fn_WpnBoxActivateThink: return (::cell) ::g_pDoDWpnBoxActivateThink_Addr;
+        case ::DoD_Func::Fn_Engine_CalcPing: return (::cell) ::g_pDoDEngine_CalcPing_Addr;
         }
     }
 
@@ -2782,12 +3563,15 @@ int AddToFullPack_Post(::entity_state_s* pState, int eIdx, ::edict_s* pEntity, :
     case ::DoD_Func::Fn_DestroyItem: return ::cell(::g_DoDDestroyItem_Hook ? ::DoD_DestroyItem : ::g_pDoDDestroyItem_Addr);
     case ::DoD_Func::Fn_SubRemove: return ::cell(::g_DoDSubRemove_Hook ? ::DoD_SubRemove : ::g_pDoDSubRemove_Addr);
     case ::DoD_Func::Fn_PackWeapon: return ::cell(::g_DoDPackWeapon_Hook ? ::DoD_PackWeapon : ::g_pDoDPackWeapon_Addr);
+    case ::DoD_Func::Fn_WpnBoxKill: return ::cell(::g_DoDWpnBoxKill_Hook ? ::DoD_WpnBoxKill : ::g_pDoDWpnBoxKill_Addr);
+    case ::DoD_Func::Fn_WpnBoxActivateThink: return ::cell(::g_DoDWpnBoxActivateThink_Hook ? ::DoD_WpnBoxActivateThink : ::g_pDoDWpnBoxActivateThink_Addr);
+    case ::DoD_Func::Fn_ChangePlayerTeam: return ::cell(::g_DoDChangePlayerTeam_Hook ? ::DoD_ChangePlayerTeam : ::g_pDoDChangePlayerTeam_Addr);
+    case ::DoD_Func::Fn_ChooseRandomClass: return ::cell(::g_DoDChooseRandomClass_Hook ? ::DoD_ChooseRandomClass : ::g_pDoDChooseRandomClass_Addr);
+    case ::DoD_Func::Fn_Create: return ::cell(::g_DoDCreate_Hook ? ::DoD_Create : ::g_pDoDCreate_Addr);
     case ::DoD_Func::Fn_InstallGameRules: return ::cell(::g_DoDInstallGameRules_Hook ? ::DoD_InstallGameRules : ::g_pDoDInstallGameRules_Addr);
     case ::DoD_Func::Fn_UtilRemove: return ::cell(::g_DoDUtilRemove_Hook ? ::DoD_UtilRemove : ::g_pDoDUtilRemove_Addr);
     case ::DoD_Func::Fn_CreateNamedEntity: return ::cell(::g_DoDCreateNamedEntity_Hook ? ::DoD_CreateNamedEntity : ::g_pDoDCreateNamedEntity_Addr);
-    case ::DoD_Func::Fn_Create: return ::cell(::g_DoDCreate_Hook ? ::DoD_Create : ::g_pDoDCreate_Addr);
-    case ::DoD_Func::Fn_WpnBoxKill: return ::cell(::g_DoDWpnBoxKill_Hook ? ::DoD_WpnBoxKill : ::g_pDoDWpnBoxKill_Addr);
-    case ::DoD_Func::Fn_WpnBoxActivateThink: return ::cell(::g_DoDWpnBoxActivateThink_Hook ? ::DoD_WpnBoxActivateThink : ::g_pDoDWpnBoxActivateThink_Addr);
+    case ::DoD_Func::Fn_Engine_CalcPing: return ::cell(::g_pDoDEngine_CalcPing_Hook ? ::DoD_Engine_CalcPing : ::g_pDoDEngine_CalcPing_Addr);
     }
 
     ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "Invalid function %d!", pParam[1]);
@@ -2805,26 +3589,59 @@ void __fastcall DoD_PlayerSpawn_Hook(::size_t CDoDTeamPlay, FASTCALL_PARAM::size
         return;
     }
 
-    auto pPlayerVars = *(::entvars_s**)(CBasePlayer + 4);
-    if (!pPlayerVars)
+    auto pVars = *(::entvars_s**)(CBasePlayer + ::g_entvarsOffs);
+    if (!pVars)
     {
         ::DoD_PlayerSpawn(CDoDTeamPlay, CBasePlayer);
         return;
     }
 
-    auto pPlayer = pPlayerVars->pContainingEntity;
+    auto pPlayer = pVars->pContainingEntity;
     if (!pPlayer)
     {
         ::DoD_PlayerSpawn(CDoDTeamPlay, CBasePlayer);
         return;
     }
 
-    auto Player = ::ENTINDEX(pPlayer);
+    auto Player = (::cell) ::F_EToI(pPlayer);
+    auto origPlayer = Player;
     if (::g_fn_ExecuteForward(::g_fwPlayerSpawn, CDoDTeamPlay, &Player))
         return;
 
-    ::DoD_PlayerSpawn(CDoDTeamPlay, CBasePlayer);
-    ::g_fn_ExecuteForward(::g_fwPlayerSpawn_Post, CDoDTeamPlay, Player);
+    auto nonPlayer = Player < 1 || Player > ::gpGlobals->maxClients;
+    switch (nonPlayer)
+    {
+    case false:
+    {
+        pPlayer = ::F_IToE(Player);
+        if (pPlayer)
+        {
+            auto pBase = pPlayer->pvPrivateData;
+            if (pBase)
+            {
+                ::DoD_PlayerSpawn(CDoDTeamPlay, (::size_t)pBase);
+                ::g_fn_ExecuteForward(::g_fwPlayerSpawn_Post, CDoDTeamPlay, Player);
+            }
+            else
+            {
+                ::DoD_PlayerSpawn(CDoDTeamPlay, CBasePlayer);
+                ::g_fn_ExecuteForward(::g_fwPlayerSpawn_Post, CDoDTeamPlay, origPlayer);
+            }
+        }
+        else
+        {
+            ::DoD_PlayerSpawn(CDoDTeamPlay, CBasePlayer);
+            ::g_fn_ExecuteForward(::g_fwPlayerSpawn_Post, CDoDTeamPlay, origPlayer);
+        }
+        break;
+    }
+    default:
+    {
+        ::DoD_PlayerSpawn(CDoDTeamPlay, CBasePlayer);
+        ::g_fn_ExecuteForward(::g_fwPlayerSpawn_Post, CDoDTeamPlay, origPlayer);
+        break;
+    }
+    }
 }
 
 void __fastcall DoD_SetBodygroup_Hook(::size_t CBasePlayer, FASTCALL_PARAM int Group, int Value)
@@ -2835,7 +3652,7 @@ void __fastcall DoD_SetBodygroup_Hook(::size_t CBasePlayer, FASTCALL_PARAM int G
         return;
     }
 
-    auto pPlayerVars = *(::entvars_s**)(CBasePlayer + 4);
+    auto pPlayerVars = *(::entvars_s**)(CBasePlayer + ::g_entvarsOffs);
     if (!pPlayerVars)
     {
         ::DoD_SetBodygroup(CBasePlayer, Group, Value);
@@ -2849,7 +3666,7 @@ void __fastcall DoD_SetBodygroup_Hook(::size_t CBasePlayer, FASTCALL_PARAM int G
         return;
     }
 
-    auto Player = ::ENTINDEX(pPlayer);
+    auto Player = ::F_EToI(pPlayer);
     if (::g_fn_ExecuteForward(::g_fwSetBodygroup, Player, &Group, &Value))
         return;
 
@@ -2865,7 +3682,7 @@ void __fastcall DoD_SubRemove_Hook(::size_t CBaseEntity FASTCALL_PARAM_ALONE)
         return;
     }
 
-    auto pEntityVars = *(::entvars_s**)(CBaseEntity + 4);
+    auto pEntityVars = *(::entvars_s**)(CBaseEntity + ::g_entvarsOffs);
     if (!pEntityVars)
     {
         ::DoD_SubRemove(CBaseEntity);
@@ -2879,7 +3696,7 @@ void __fastcall DoD_SubRemove_Hook(::size_t CBaseEntity FASTCALL_PARAM_ALONE)
         return;
     }
 
-    auto Entity = ::ENTINDEX(pEntity);
+    auto Entity = ::F_EToI(pEntity);
     if (::g_fn_ExecuteForward(::g_fwSubRemove, Entity))
         return;
 
@@ -2892,11 +3709,11 @@ int __fastcall DoD_PackWeapon_Hook(::size_t CWeaponBox, FASTCALL_PARAM::size_t C
     if (false == CWeaponBox || false == CBasePlayerItem)
         return ::DoD_PackWeapon(CWeaponBox, CBasePlayerItem);
 
-    auto pEntityVars = *(::entvars_s**)(CWeaponBox + 4);
+    auto pEntityVars = *(::entvars_s**)(CWeaponBox + ::g_entvarsOffs);
     if (!pEntityVars)
         return ::DoD_PackWeapon(CWeaponBox, CBasePlayerItem);
 
-    auto pWeaponVars = *(::entvars_s**)(CBasePlayerItem + 4);
+    auto pWeaponVars = *(::entvars_s**)(CBasePlayerItem + ::g_entvarsOffs);
     if (!pWeaponVars)
         return ::DoD_PackWeapon(CWeaponBox, CBasePlayerItem);
 
@@ -2909,7 +3726,7 @@ int __fastcall DoD_PackWeapon_Hook(::size_t CWeaponBox, FASTCALL_PARAM::size_t C
         return ::DoD_PackWeapon(CWeaponBox, CBasePlayerItem);
 
     ::cell Override = false;
-    auto Entity = ::ENTINDEX(pEntity), Weapon = ::ENTINDEX(pWeapon);
+    auto Entity = ::F_EToI(pEntity), Weapon = ::F_EToI(pWeapon);
     if (::g_fn_ExecuteForward(::g_fwPackWeapon, Entity, &Weapon, &Override))
         return Override;
 
@@ -2926,7 +3743,7 @@ void DoD_UtilRemove_Hook(::size_t CBaseEntity)
         return;
     }
 
-    auto pEntityVars = *(::entvars_s**)(CBaseEntity + 4);
+    auto pEntityVars = *(::entvars_s**)(CBaseEntity + ::g_entvarsOffs);
     if (!pEntityVars)
     {
         ::DoD_UtilRemove(CBaseEntity);
@@ -2940,7 +3757,7 @@ void DoD_UtilRemove_Hook(::size_t CBaseEntity)
         return;
     }
 
-    auto Entity = ::ENTINDEX(pEntity);
+    auto Entity = ::F_EToI(pEntity);
     if (::g_fn_ExecuteForward(::g_fwUtilRemove, &Entity))
         return;
 
@@ -2980,10 +3797,10 @@ void DoD_UtilRemove_Hook(::size_t CBaseEntity)
 
     ::cell Override = -1;
     if (::g_fn_ExecuteForward(::g_fwCreateNamedEntity, Buffer, sizeof Buffer, &Override) || Buffer[0] == false)
-        return Override < 0 ? NULL : ::INDEXENT(Override);
+        return Override < 0 ? NULL : ::F_IToE(Override);
 
     auto pEntity = ::DoD_CreateNamedEntity(::setupString(Buffer));
-    ::g_fn_ExecuteForward(::g_fwCreateNamedEntity_Post, Buffer, pEntity ? ::ENTINDEX(pEntity) : -1);
+    ::g_fn_ExecuteForward(::g_fwCreateNamedEntity_Post, Buffer, pEntity ? ::F_EToI(pEntity) : -1);
     return pEntity;
 }
 
@@ -2995,7 +3812,7 @@ void __fastcall DoD_WpnBoxKill_Hook(::size_t CWeaponBox FASTCALL_PARAM_ALONE)
         return;
     }
 
-    auto pEntityVars = *(::entvars_s**)(CWeaponBox + 4);
+    auto pEntityVars = *(::entvars_s**)(CWeaponBox + ::g_entvarsOffs);
     if (!pEntityVars)
     {
         ::DoD_WpnBoxKill(CWeaponBox);
@@ -3009,7 +3826,7 @@ void __fastcall DoD_WpnBoxKill_Hook(::size_t CWeaponBox FASTCALL_PARAM_ALONE)
         return;
     }
 
-    auto Entity = ::ENTINDEX(pEntity);
+    auto Entity = ::F_EToI(pEntity);
     if (::g_fn_ExecuteForward(::g_fwWpnBoxKill, Entity))
         return;
 
@@ -3025,7 +3842,7 @@ void __fastcall DoD_WpnBoxActivateThink_Hook(::size_t CWeaponBox FASTCALL_PARAM_
         return;
     }
 
-    auto pEntityVars = *(::entvars_s**)(CWeaponBox + 4);
+    auto pEntityVars = *(::entvars_s**)(CWeaponBox + ::g_entvarsOffs);
     if (!pEntityVars)
     {
         ::DoD_WpnBoxActivateThink(CWeaponBox);
@@ -3039,7 +3856,7 @@ void __fastcall DoD_WpnBoxActivateThink_Hook(::size_t CWeaponBox FASTCALL_PARAM_
         return;
     }
 
-    auto Entity = ::ENTINDEX(pEntity);
+    auto Entity = ::F_EToI(pEntity);
     if (::g_fn_ExecuteForward(::g_fwWpnBoxActivateThink, Entity))
         return;
 
@@ -3105,7 +3922,7 @@ void __fastcall DoD_WpnBoxActivateThink_Hook(::size_t CWeaponBox FASTCALL_PARAM_
     Angles[1] = ::g_fn_RealToCell(pAngles->y);
     Angles[2] = ::g_fn_RealToCell(pAngles->z);
     auto Override = ::cell(-1);
-    auto Owner = ::cell(pOwner ? ::ENTINDEX(pOwner) : -1);
+    auto Owner = ::cell(pOwner ? ::F_EToI(pOwner) : -1);
     auto amxOrigin = ::g_fn_PrepareCellArrayA(Origin, ARRAYSIZE(Origin), true);
     auto amxAngles = ::g_fn_PrepareCellArrayA(Angles, ARRAYSIZE(Angles), true);
     if (::g_fn_ExecuteForward(::g_fwCreate, Buffer, sizeof Buffer, amxOrigin, amxAngles, &Owner, &Override) || false == Buffer[0])
@@ -3113,7 +3930,7 @@ void __fastcall DoD_WpnBoxActivateThink_Hook(::size_t CWeaponBox FASTCALL_PARAM_
 
     auto vecOrigin = ::Vector(::g_fn_CellToReal(Origin[0]), ::g_fn_CellToReal(Origin[1]), ::g_fn_CellToReal(Origin[2]));
     auto vecAngles = ::Vector(::g_fn_CellToReal(Angles[0]), ::g_fn_CellToReal(Angles[1]), ::g_fn_CellToReal(Angles[2]));
-    ::edict_s* pNewOwner = ((Owner < 0 || Owner > ::gpGlobals->maxEntities) ? NULL : ::INDEXENT(Owner));
+    ::edict_s* pNewOwner = ((Owner < 0 || Owner > ::gpGlobals->maxEntities) ? NULL : ::F_IToE(Owner));
     auto Item = ::DoD_Create((char*)STRING(::setupString(Buffer)), &vecOrigin, &vecAngles, pNewOwner);
     amxOrigin = ::g_fn_PrepareCellArrayA(Origin, ARRAYSIZE(Origin), false);
     amxAngles = ::g_fn_PrepareCellArrayA(Angles, ARRAYSIZE(Angles), false);
@@ -3130,7 +3947,7 @@ void __fastcall DoD_DestroyItem_Hook(::size_t CBasePlayerItem FASTCALL_PARAM_ALO
         return;
     }
 
-    auto pEntityVars = *(::entvars_s**)(CBasePlayerItem + 4);
+    auto pEntityVars = *(::entvars_s**)(CBasePlayerItem + ::g_entvarsOffs);
     if (!pEntityVars)
     {
         ::DoD_DestroyItem(CBasePlayerItem);
@@ -3144,7 +3961,7 @@ void __fastcall DoD_DestroyItem_Hook(::size_t CBasePlayerItem FASTCALL_PARAM_ALO
         return;
     }
 
-    auto Entity = ::ENTINDEX(pEntity);
+    auto Entity = ::F_EToI(pEntity);
     if (::g_fn_ExecuteForward(::g_fwDestroyItem, Entity))
         return;
 
@@ -3178,7 +3995,7 @@ void __fastcall DoD_DestroyItem_Hook(::size_t CBasePlayerItem FASTCALL_PARAM_ALO
         return ::DoD_GiveNamedItem(CBasePlayer, pItem);
     }
 
-    auto pPlayerVars = *(::entvars_s**)(CBasePlayer + 4);
+    auto pPlayerVars = *(::entvars_s**)(CBasePlayer + ::g_entvarsOffs);
     if (!pPlayerVars)
         return ::DoD_GiveNamedItem(CBasePlayer, pItem);
 
@@ -3187,7 +4004,7 @@ void __fastcall DoD_DestroyItem_Hook(::size_t CBasePlayerItem FASTCALL_PARAM_ALO
         return ::DoD_GiveNamedItem(CBasePlayer, pItem);
 
     ::cell Override = -1;
-    auto Player = ::ENTINDEX(pPlayer);
+    auto Player = ::F_EToI(pPlayer);
     static char Buffer[64];
 #ifndef __linux__
     ::strncpy_s(Buffer, sizeof Buffer, pItem, _TRUNCATE);
@@ -3195,7 +4012,7 @@ void __fastcall DoD_DestroyItem_Hook(::size_t CBasePlayerItem FASTCALL_PARAM_ALO
     ::snprintf(Buffer, sizeof Buffer, pItem);
 #endif
     if (::g_fn_ExecuteForward(::g_fwGiveNamedItem, Player, Buffer, sizeof Buffer, &Override) || false == Buffer[0])
-        return Override < 0 ? NULL : ::INDEXENT(Override);
+        return Override < 0 ? NULL : ::F_IToE(Override);
 
     ::edict_s* pEntity;
     if (false == ::_stricmp("weapon_scopedfg42", Buffer))
@@ -3204,9 +4021,9 @@ void __fastcall DoD_DestroyItem_Hook(::size_t CBasePlayerItem FASTCALL_PARAM_ALO
         if (pEntity)
         {
             auto pItemBase = (::size_t*)pEntity->pvPrivateData;
-            if (pItemBase && !(*(::size_t*)((unsigned char*)pItemBase + ::g_Sigs[::DoD_Sig::Offs_ItemScope].Offs) & 1u))
+            if (pItemBase && !(*(::size_t*)((unsigned char*)pItemBase + ::g_Sigs[::DoD_Sig::Offs_ItemScope].Offs) & true))
             {
-                *(::size_t*)((unsigned char*)pItemBase + ::g_Sigs[::DoD_Sig::Offs_ItemScope].Offs) |= 1u;
+                *(::size_t*)((unsigned char*)pItemBase + ::g_Sigs[::DoD_Sig::Offs_ItemScope].Offs) |= true;
                 (*(void(__thiscall**) (::size_t*)) (*pItemBase + ::g_Sigs[::DoD_Sig::Offs_ApplyItemScope].Offs)) (pItemBase);
             }
         }
@@ -3217,9 +4034,9 @@ void __fastcall DoD_DestroyItem_Hook(::size_t CBasePlayerItem FASTCALL_PARAM_ALO
         if (pEntity)
         {
             auto pItemBase = (::size_t*)pEntity->pvPrivateData;
-            if (pItemBase && !(*(::size_t*)((unsigned char*)pItemBase + ::g_Sigs[::DoD_Sig::Offs_ItemScope].Offs) & 1u))
+            if (pItemBase && !(*(::size_t*)((unsigned char*)pItemBase + ::g_Sigs[::DoD_Sig::Offs_ItemScope].Offs) & true))
             {
-                *(::size_t*)((unsigned char*)pItemBase + ::g_Sigs[::DoD_Sig::Offs_ItemScope].Offs) |= 1u;
+                *(::size_t*)((unsigned char*)pItemBase + ::g_Sigs[::DoD_Sig::Offs_ItemScope].Offs) |= true;
                 (*(void(__thiscall**) (::size_t*)) (*pItemBase + ::g_Sigs[::DoD_Sig::Offs_ApplyItemScope].Offs)) (pItemBase);
             }
         }
@@ -3227,7 +4044,7 @@ void __fastcall DoD_DestroyItem_Hook(::size_t CBasePlayerItem FASTCALL_PARAM_ALO
     else
         pEntity = ::DoD_GiveNamedItem(CBasePlayer, STRING(::setupString(Buffer)));
 
-    ::g_fn_ExecuteForward(::g_fwGiveNamedItem_Post, Player, Buffer, pEntity ? ::ENTINDEX(pEntity) : -1);
+    ::g_fn_ExecuteForward(::g_fwGiveNamedItem_Post, Player, Buffer, pEntity ? ::F_EToI(pEntity) : -1);
     return pEntity;
 }
 
@@ -3257,7 +4074,7 @@ int __fastcall DoD_GiveAmmo_Hook(::size_t CBasePlayer, FASTCALL_PARAM int Ammo, 
         return ::DoD_GiveAmmo(CBasePlayer, Ammo, pName, Max);
     }
 
-    auto pPlayerVars = *(::entvars_s**)(CBasePlayer + 4);
+    auto pPlayerVars = *(::entvars_s**)(CBasePlayer + ::g_entvarsOffs);
     if (!pPlayerVars)
         return ::DoD_GiveAmmo(CBasePlayer, Ammo, pName, Max);
 
@@ -3266,7 +4083,7 @@ int __fastcall DoD_GiveAmmo_Hook(::size_t CBasePlayer, FASTCALL_PARAM int Ammo, 
         return ::DoD_GiveAmmo(CBasePlayer, Ammo, pName, Max);
 
     ::cell Override = -1;
-    auto Player = ::ENTINDEX(pPlayer);
+    auto Player = ::F_EToI(pPlayer);
     static char Buffer[64];
 #ifndef __linux__
     ::strncpy_s(Buffer, sizeof Buffer, pName, _TRUNCATE);
@@ -3279,6 +4096,142 @@ int __fastcall DoD_GiveAmmo_Hook(::size_t CBasePlayer, FASTCALL_PARAM int Ammo, 
     auto Res = ::DoD_GiveAmmo(CBasePlayer, Ammo, Buffer, Max);
     ::g_fn_ExecuteForward(::g_fwGiveAmmo_Post, Player, Ammo, Buffer, Max, Res);
     return Res;
+}
+
+void __fastcall DoD_ChangePlayerTeam_Hook(::size_t CDoDTeamPlay, FASTCALL_PARAM::size_t CBasePlayer, int Team, int Kill, int Gib)
+{
+    if (false != CDoDTeamPlay)
+        ::g_CDoDTeamPlay = CDoDTeamPlay;
+
+    if (false == CBasePlayer)
+    {
+        ::DoD_ChangePlayerTeam(CDoDTeamPlay, CBasePlayer, Team, Kill, Gib);
+        return;
+    }
+
+    auto pVars = *(::entvars_s**)(CBasePlayer + ::g_entvarsOffs);
+    if (!pVars)
+    {
+        ::DoD_ChangePlayerTeam(CDoDTeamPlay, CBasePlayer, Team, Kill, Gib);
+        return;
+    }
+
+    auto pPlayer = pVars->pContainingEntity;
+    if (!pPlayer)
+    {
+        ::DoD_ChangePlayerTeam(CDoDTeamPlay, CBasePlayer, Team, Kill, Gib);
+        return;
+    }
+
+    auto Player = (::cell) ::F_EToI(pPlayer);
+    auto origPlayer = Player;
+    if (::g_fn_ExecuteForward(::g_fwChangePlayerTeam, CDoDTeamPlay, &Player, &Team, &Kill, &Gib))
+        return;
+
+    auto nonPlayer = Player < 1 || Player > ::gpGlobals->maxClients;
+    switch (nonPlayer)
+    {
+    case false:
+    {
+        pPlayer = ::F_IToE(Player);
+        if (pPlayer)
+        {
+            auto pBase = pPlayer->pvPrivateData;
+            if (pBase)
+            {
+                ::DoD_ChangePlayerTeam(CDoDTeamPlay, (::size_t)pBase, Team, Kill, Gib);
+                ::g_fn_ExecuteForward(::g_fwChangePlayerTeam_Post, CDoDTeamPlay, Player, Team, Kill, Gib);
+            }
+            else
+            {
+                ::DoD_ChangePlayerTeam(CDoDTeamPlay, CBasePlayer, Team, Kill, Gib);
+                ::g_fn_ExecuteForward(::g_fwChangePlayerTeam_Post, CDoDTeamPlay, origPlayer, Team, Kill, Gib);
+            }
+        }
+        else
+        {
+            ::DoD_ChangePlayerTeam(CDoDTeamPlay, CBasePlayer, Team, Kill, Gib);
+            ::g_fn_ExecuteForward(::g_fwChangePlayerTeam_Post, CDoDTeamPlay, origPlayer, Team, Kill, Gib);
+        }
+        break;
+    }
+    default:
+    {
+        ::DoD_ChangePlayerTeam(CDoDTeamPlay, CBasePlayer, Team, Kill, Gib);
+        ::g_fn_ExecuteForward(::g_fwChangePlayerTeam_Post, CDoDTeamPlay, origPlayer, Team, Kill, Gib);
+        break;
+    }
+    }
+}
+
+void __fastcall DoD_ChooseRandomClass_Hook(::size_t CDoDTeamPlay, FASTCALL_PARAM::size_t CBasePlayer)
+{
+    if (false != CDoDTeamPlay)
+        ::g_CDoDTeamPlay = CDoDTeamPlay;
+
+    if (false == CBasePlayer)
+    {
+        ::DoD_ChooseRandomClass(CDoDTeamPlay, CBasePlayer);
+        return;
+    }
+
+    auto pVars = *(::entvars_s**)(CBasePlayer + ::g_entvarsOffs);
+    if (!pVars)
+    {
+        ::DoD_ChooseRandomClass(CDoDTeamPlay, CBasePlayer);
+        return;
+    }
+
+    auto pPlayer = pVars->pContainingEntity;
+    if (!pPlayer)
+    {
+        ::DoD_ChooseRandomClass(CDoDTeamPlay, CBasePlayer);
+        return;
+    }
+
+    auto Player = (::cell) ::F_EToI(pPlayer);
+    auto origPlayer = Player;
+    if (::g_fn_ExecuteForward(::g_fwChooseRandomClass, CDoDTeamPlay, &Player))
+        return;
+
+    auto nonPlayer = Player < 1 || Player > ::gpGlobals->maxClients;
+    switch (nonPlayer)
+    {
+    case false:
+    {
+        pPlayer = ::F_IToE(Player);
+        if (pPlayer)
+        {
+            auto pBase = pPlayer->pvPrivateData;
+            if (pBase)
+            {
+                ::DoD_ChooseRandomClass(CDoDTeamPlay, (::size_t)pBase);
+                auto Class = *(::cell*)(((unsigned char*)pBase) + ::g_Sigs[::DoD_Sig::Offs_CBasePlayer_NextClass].Offs);
+                ::g_fn_ExecuteForward(::g_fwChooseRandomClass_Post, CDoDTeamPlay, Player, Class);
+            }
+            else
+            {
+                ::DoD_ChooseRandomClass(CDoDTeamPlay, CBasePlayer);
+                auto Class = *(::cell*)(((unsigned char*)CBasePlayer) + ::g_Sigs[::DoD_Sig::Offs_CBasePlayer_NextClass].Offs);
+                ::g_fn_ExecuteForward(::g_fwChooseRandomClass_Post, CDoDTeamPlay, origPlayer, Class);
+            }
+        }
+        else
+        {
+            ::DoD_ChooseRandomClass(CDoDTeamPlay, CBasePlayer);
+            auto Class = *(::cell*)(((unsigned char*)CBasePlayer) + ::g_Sigs[::DoD_Sig::Offs_CBasePlayer_NextClass].Offs);
+            ::g_fn_ExecuteForward(::g_fwChooseRandomClass_Post, CDoDTeamPlay, origPlayer, Class);
+        }
+        break;
+    }
+    default:
+    {
+        ::DoD_ChooseRandomClass(CDoDTeamPlay, CBasePlayer);
+        auto Class = *(::cell*)(((unsigned char*)CBasePlayer) + ::g_Sigs[::DoD_Sig::Offs_CBasePlayer_NextClass].Offs);
+        ::g_fn_ExecuteForward(::g_fwChooseRandomClass_Post, CDoDTeamPlay, origPlayer, Class);
+        break;
+    }
+    }
 }
 
 void __fastcall DoD_DropPlayerItem_Hook(::size_t CBasePlayer, FASTCALL_PARAM char* pItem, bool Force)
@@ -3300,7 +4253,7 @@ void __fastcall DoD_DropPlayerItem_Hook(::size_t CBasePlayer, FASTCALL_PARAM cha
         return ::DoD_DropPlayerItem(CBasePlayer, pItem, Force);
     }
 
-    auto pPlayerVars = *(::entvars_s**)(CBasePlayer + 4);
+    auto pPlayerVars = *(::entvars_s**)(CBasePlayer + ::g_entvarsOffs);
     if (!pPlayerVars)
     {
         ::DoD_DropPlayerItem(CBasePlayer, pItem, Force);
@@ -3315,7 +4268,7 @@ void __fastcall DoD_DropPlayerItem_Hook(::size_t CBasePlayer, FASTCALL_PARAM cha
     }
 
     auto newForce = (::cell)Force;
-    auto Player = ::ENTINDEX(pPlayer);
+    auto Player = ::F_EToI(pPlayer);
     static char Buffer[64];
 #ifndef __linux__
     ::strncpy_s(Buffer, sizeof Buffer, pItem, _TRUNCATE);
@@ -3334,11 +4287,11 @@ int __fastcall DoD_RemovePlayerItem_Hook(::size_t CBasePlayer, FASTCALL_PARAM::s
     if (false == CBasePlayer || false == CBasePlayerItem)
         return ::DoD_RemovePlayerItem(CBasePlayer, CBasePlayerItem);
 
-    auto pPlayerVars = *(::entvars_s**)(CBasePlayer + 4);
+    auto pPlayerVars = *(::entvars_s**)(CBasePlayer + ::g_entvarsOffs);
     if (!pPlayerVars)
         return ::DoD_RemovePlayerItem(CBasePlayer, CBasePlayerItem);
 
-    auto pItemVars = *(::entvars_s**)(CBasePlayerItem + 4);
+    auto pItemVars = *(::entvars_s**)(CBasePlayerItem + ::g_entvarsOffs);
     if (!pItemVars)
         return ::DoD_RemovePlayerItem(CBasePlayer, CBasePlayerItem);
 
@@ -3351,8 +4304,7 @@ int __fastcall DoD_RemovePlayerItem_Hook(::size_t CBasePlayer, FASTCALL_PARAM::s
         return ::DoD_RemovePlayerItem(CBasePlayer, CBasePlayerItem);
 
     ::cell Override = false;
-    auto Player = ::ENTINDEX(pPlayer);
-    auto Item = ::ENTINDEX(pItem);
+    auto Player = ::F_EToI(pPlayer), Item = ::F_EToI(pItem);
     if (::g_fn_ExecuteForward(::g_fwRemovePlayerItem, Player, &Item, &Override))
         return Override;
 
@@ -3366,11 +4318,11 @@ int __fastcall DoD_AddPlayerItem_Hook(::size_t CBasePlayer, FASTCALL_PARAM::size
     if (false == CBasePlayer || false == CBasePlayerItem)
         return ::DoD_AddPlayerItem(CBasePlayer, CBasePlayerItem);
 
-    auto pPlayerVars = *(::entvars_s**)(CBasePlayer + 4);
+    auto pPlayerVars = *(::entvars_s**)(CBasePlayer + ::g_entvarsOffs);
     if (!pPlayerVars)
         return ::DoD_AddPlayerItem(CBasePlayer, CBasePlayerItem);
 
-    auto pItemVars = *(::entvars_s**)(CBasePlayerItem + 4);
+    auto pItemVars = *(::entvars_s**)(CBasePlayerItem + ::g_entvarsOffs);
     if (!pItemVars)
         return ::DoD_AddPlayerItem(CBasePlayer, CBasePlayerItem);
 
@@ -3383,8 +4335,7 @@ int __fastcall DoD_AddPlayerItem_Hook(::size_t CBasePlayer, FASTCALL_PARAM::size
         return ::DoD_AddPlayerItem(CBasePlayer, CBasePlayerItem);
 
     ::cell Override = false;
-    auto Player = ::ENTINDEX(pPlayer);
-    auto Item = ::ENTINDEX(pItem);
+    auto Player = ::F_EToI(pPlayer), Item = ::F_EToI(pItem);
     if (::g_fn_ExecuteForward(::g_fwAddPlayerItem, Player, &Item, &Override))
         return Override;
 
@@ -3401,7 +4352,7 @@ void __fastcall DoD_RemoveAllItems_Hook(::size_t CBasePlayer, FASTCALL_PARAM int
         return;
     }
 
-    auto pPlayerVars = *(::entvars_s**)(CBasePlayer + 4);
+    auto pPlayerVars = *(::entvars_s**)(CBasePlayer + ::g_entvarsOffs);
     if (!pPlayerVars)
     {
         ::DoD_RemoveAllItems(CBasePlayer, RemoveSuit);
@@ -3415,7 +4366,7 @@ void __fastcall DoD_RemoveAllItems_Hook(::size_t CBasePlayer, FASTCALL_PARAM int
         return;
     }
 
-    auto Player = ::ENTINDEX(pPlayer);
+    auto Player = ::F_EToI(pPlayer);
     if (::g_fn_ExecuteForward(::g_fwRemoveAllItems, Player, &RemoveSuit))
         return;
 
@@ -3460,17 +4411,45 @@ void __fastcall DoD_SetWaveTime_Hook(::size_t CDoDTeamPlay, FASTCALL_PARAM int T
     return ::g_CDoDTeamPlay;
 }
 
+int DoD_Engine_CalcPing_Hook(::size_t client_s)
+{
+    static auto Found = ::edict_s_Ptr_From_client_s_Ptr_Offs(client_s, ::g_engConvOffs);
+    if (false == Found)
+    {
+        static bool Logged = false;
+        if (false == Logged)
+        {
+            ::MF_Log("*** Warning, ::DoD_Engine_CalcPing_Hook() failed to convert ::client_s* to ::edict_s*!"
+                " " "Contact the author to update the module! ***");
+            Logged = true;
+        }
+        return ::DoD_Engine_CalcPing(client_s);
+    }
+    auto pAddr = (unsigned char*)client_s;
+    auto pPlayer = *(::edict_s**)(pAddr + ::g_engConvOffs);
+    if (!pPlayer)
+        return ::DoD_Engine_CalcPing(client_s);
+    ::cell Ping = false;
+    auto Player = (unsigned char) ::F_EToI(pPlayer);
+    ::g_svPlayerEngPtrs[Player] = client_s;
+    if (::g_fn_ExecuteForward(::g_fwEngine_CalcPing, Player, &Ping))
+        return Ping;
+    Ping = ::DoD_Engine_CalcPing(client_s);
+    ::g_fn_ExecuteForward(::g_fwEngine_CalcPing_Post, Player, Ping);
+    return Ping;
+}
+
 ::AMX_NATIVE_INFO DoDHacks_Natives[] =
 {
+    { "DoD_AddHealthIfWounded", ::DoD_AddHealthIfWounded_Native, },
+    { "DoD_IsPlayerFullHealth", ::DoD_IsPlayerFullHealth_Native, },
+
     { "DoD_PlayerSpawn", ::DoD_PlayerSpawn_Native, },
     { "DoD_GiveNamedItem", ::DoD_GiveNamedItem_Native, },
     { "DoD_DropPlayerItem", ::DoD_DropPlayerItem_Native, },
     { "DoD_RemoveAllItems", ::DoD_RemoveAllItems_Native, },
     { "DoD_GiveAmmo", ::DoD_GiveAmmo_Native, },
-    { "DoD_AddHealthIfWounded", ::DoD_AddHealthIfWounded_Native, },
-    { "DoD_IsPlayerFullHealth", ::DoD_IsPlayerFullHealth_Native, },
     { "DoD_InstallGameRules", ::DoD_InstallGameRules_Native, },
-    { "DoD_DeployItem", ::DoD_DeployItem_Native, },
     { "DoD_SetBodygroup", ::DoD_SetBodygroup_Native, },
     { "DoD_SubRemove", ::DoD_SubRemove_Native, },
     { "DoD_UtilRemove", ::DoD_UtilRemove_Native, },
@@ -3479,17 +4458,25 @@ void __fastcall DoD_SetWaveTime_Hook(::size_t CDoDTeamPlay, FASTCALL_PARAM int T
     { "DoD_PackWeapon", ::DoD_PackWeapon_Native, },
     { "DoD_WpnBoxKill", ::DoD_WpnBoxKill_Native, },
     { "DoD_WpnBoxActivateThink", ::DoD_WpnBoxActivateThink_Native, },
+    { "DoD_ChangePlayerTeam", ::DoD_ChangePlayerTeam_Native, },
+    { "DoD_ChooseRandomClass", ::DoD_ChooseRandomClass_Native, },
     { "DoD_Create", ::DoD_Create_Native, },
-    { "DoD_AllocString", ::DoD_AllocString_Native, },
-    { "DoD_GetFunctionAddress", ::DoD_GetFunctionAddress_Native, },
+    { "DoD_Engine_CalcPing", ::DoD_Engine_CalcPing_Native, },
+
     { "DoD_SetEntityThinkFunc", ::DoD_SetEntityThinkFunc_Native, },
     { "DoD_GetEntityThinkFunc", ::DoD_GetEntityThinkFunc_Native, },
+
+    { "DoD_TeamIndexToName", ::DoD_TeamIndexToName_Native, },
+    { "DoD_ClassIndexToName", ::DoD_ClassIndexToName_Native, },
 
     { "DoD_FindSignature", ::DoD_FindSignature_Native, },
     { "DoD_FindSymbol", ::DoD_FindSymbol_Native, },
 
     { "DoD_ReadFromAddress", ::DoD_ReadFromAddress_Native, },
     { "DoD_StoreToAddress", ::DoD_StoreToAddress_Native, },
+
+    { "DoD_ReadFloatFromAddress", ::DoD_ReadFloatFromAddress_Native, },
+    { "DoD_StoreFloatToAddress", ::DoD_StoreFloatToAddress_Native, },
 
     { "DoD_SetWaveTime", ::DoD_SetWaveTime_Native, },
     { "DoD_GetWaveTime", ::DoD_GetWaveTime_Native, },
@@ -3509,8 +4496,11 @@ void __fastcall DoD_SetWaveTime_Hook(::size_t CDoDTeamPlay, FASTCALL_PARAM int T
     { "DoD_AddKeyValDel", ::DoD_AddKeyValDel_Native, },
     { "DoD_AddKeyValAdd", ::DoD_AddKeyValAdd_Native, },
 
-    { "DoD_RemovePlayerItem", ::DoD_RemovePlayerItem_Native, },
     { "DoD_AddPlayerItem", ::DoD_AddPlayerItem_Native, },
+    { "DoD_RemovePlayerItem", ::DoD_RemovePlayerItem_Native, },
+
+    { "DoD_AddAdvancedDeploy", ::DoD_AddAdvancedDeploy_Native, },
+    { "DoD_DelAdvancedDeploy", ::DoD_DelAdvancedDeploy_Native, },
 
     { "DoD_AddExploNadeProjGlow", ::DoD_AddExploNadeProjGlow_Native, },
     { "DoD_DelExploNadeProjGlow", ::DoD_DelExploNadeProjGlow_Native, },
@@ -3531,11 +4521,40 @@ void __fastcall DoD_SetWaveTime_Hook(::size_t CDoDTeamPlay, FASTCALL_PARAM int T
     { "DoD_GetAxisRespawnFactor", ::DoD_GetAxisRespawnFactor_Native, },
 
     { "DoD_ReadGameRulesBool", ::DoD_ReadGameRulesBool_Native, },
+    { "DoD_ReadGameRulesByte", ::DoD_ReadGameRulesByte_Native, },
+    { "DoD_ReadGameRulesUByte", ::DoD_ReadGameRulesUByte_Native, },
+    { "DoD_ReadGameRulesShort", ::DoD_ReadGameRulesShort_Native, },
+    { "DoD_ReadGameRulesUShort", ::DoD_ReadGameRulesUShort_Native, },
     { "DoD_ReadGameRulesFloat", ::DoD_ReadGameRulesFloat_Native, },
     { "DoD_ReadGameRulesInt", ::DoD_ReadGameRulesInt_Native, },
+    { "DoD_ReadGameRulesUInt", ::DoD_ReadGameRulesUInt_Native, },
     { "DoD_ReadGameRulesStr", ::DoD_ReadGameRulesStr_Native, },
 
+    { "DoD_StoreGameRulesBool", ::DoD_StoreGameRulesBool_Native, },
+    { "DoD_StoreGameRulesByte", ::DoD_StoreGameRulesByte_Native, },
+    { "DoD_StoreGameRulesUByte", ::DoD_StoreGameRulesUByte_Native, },
+    { "DoD_StoreGameRulesShort", ::DoD_StoreGameRulesShort_Native, },
+    { "DoD_StoreGameRulesUShort", ::DoD_StoreGameRulesUShort_Native, },
+    { "DoD_StoreGameRulesFloat", ::DoD_StoreGameRulesFloat_Native, },
+    { "DoD_StoreGameRulesInt", ::DoD_StoreGameRulesInt_Native, },
+    { "DoD_StoreGameRulesUInt", ::DoD_StoreGameRulesUInt_Native, },
+    { "DoD_StoreGameRulesStr", ::DoD_StoreGameRulesStr_Native, },
+
+    { "DoD_TraceLine", ::DoD_TraceLine_Native, },
+    { "DoD_TraceLineComplex", ::DoD_TraceLineComplex_Native, },
+
+    { "DoD_HookShouldCollide", ::DoD_HookShouldCollide_Native, },
+    { "DoD_UnhookShouldCollide", ::DoD_UnhookShouldCollide_Native, },
+
+    { "DoD_BlockToPlayerCollision", ::DoD_BlockToPlayerCollision_Native, },
+    { "DoD_UnblockFromPlayerCollision", ::DoD_UnblockFromPlayerCollision_Native, },
+
+    { "DoD_DeployItem", ::DoD_DeployItem_Native, },
+    { "DoD_AllocString", ::DoD_AllocString_Native, },
     { "DoD_AreGameRulesReady", ::DoD_AreGameRulesReady_Native, },
+    { "DoD_GetFunctionAddress", ::DoD_GetFunctionAddress_Native, },
+    { "DoD_PlayerOwnsDeployableGun", ::DoD_PlayerOwnsDeployableGun_Native, },
+    { "DoD_PlayerHoldsDeployableGun", ::DoD_PlayerHoldsDeployableGun_Native, },
 
     { NULL, NULL, },
 };
@@ -3606,6 +4625,7 @@ bool ReadConfig(bool ForLinux)
         ::g_Sigs.push_back(SigData);
     }
     ::fclose(pConfig);
+    ::g_entvarsOffs = ::g_Sigs[::DoD_Sig::Offs_Entvars].Offs;
     return true;
 }
 
@@ -3618,8 +4638,47 @@ void OnAmxxAttach()
         return;
     }
 
-    bool Opened = false;
-    auto pDoD = ::openLib("dod", Opened);
+    /// Engine module.
+    auto Opened = false;
+    auto pDoD = ::openLib("swds", Opened);
+    if (pDoD)
+    {
+        ::_MEMORY_BASIC_INFORMATION memInfo{ };
+        if (::VirtualQuery(pDoD, &memInfo, sizeof memInfo) && memInfo.AllocationBase)
+        {
+            ::size_t Addr = false;
+            auto pDosHdr = (::_IMAGE_DOS_HEADER*)memInfo.AllocationBase;
+            auto pNtHdr = (::_IMAGE_NT_HEADERS*)((::size_t)pDosHdr + (::size_t)pDosHdr->e_lfanew);
+
+            if (::g_Sigs[::DoD_Sig::Engine_CalcPing_New].IsSymbol == false)
+            {
+                if (::findInMemory((unsigned char*)pDosHdr, pNtHdr->OptionalHeader.SizeOfImage, ::g_Sigs[::DoD_Sig::Engine_CalcPing_New].Signature, &Addr, true))
+                    ::g_pDoDEngine_CalcPing_Addr = (void*)Addr;
+            }
+            else
+                ::g_pDoDEngine_CalcPing_Addr = (void*) ::GetProcAddress(pDoD, ::g_Sigs[::DoD_Sig::Engine_CalcPing_New].Symbol.c_str());
+
+            if (!::g_pDoDEngine_CalcPing_Addr)
+            {
+                if (::g_Sigs[::DoD_Sig::Engine_CalcPing_Old].IsSymbol == false)
+                {
+                    if (::findInMemory((unsigned char*)pDosHdr, pNtHdr->OptionalHeader.SizeOfImage, ::g_Sigs[::DoD_Sig::Engine_CalcPing_Old].Signature, &Addr, true))
+                        ::g_pDoDEngine_CalcPing_Addr = (void*)Addr;
+                }
+                else
+                    ::g_pDoDEngine_CalcPing_Addr = (void*) ::GetProcAddress(pDoD, ::g_Sigs[::DoD_Sig::Engine_CalcPing_Old].Symbol.c_str());
+
+                if (!::g_pDoDEngine_CalcPing_Addr)
+                    ::MF_Log("::DoD_Engine_CalcPing symbol/ signature not found!");
+            }
+        }
+        if (Opened)
+            ::FreeLibrary(pDoD);
+    }
+
+    /// Game module.
+    Opened = false;
+    pDoD = ::openLib("dod", Opened);
     if (!pDoD)
     {
         ::MF_Log("::GetModuleHandleA/ ::LoadLibraryA failed! Use with caution!");
@@ -3638,12 +4697,12 @@ void OnAmxxAttach()
     }
 
     ::size_t Addr = false;
-    auto pImgDosHdr = (::_IMAGE_DOS_HEADER*)memInfo.AllocationBase;
-    auto pImgNtHdr = (::_IMAGE_NT_HEADERS*)((::size_t)pImgDosHdr + (::size_t)pImgDosHdr->e_lfanew);
+    auto pDosHdr = (::_IMAGE_DOS_HEADER*)memInfo.AllocationBase;
+    auto pNtHdr = (::_IMAGE_NT_HEADERS*)((::size_t)pDosHdr + (::size_t)pDosHdr->e_lfanew);
 
     if (::g_Sigs[::DoD_Sig::PlayerSpawn].IsSymbol == false)
     {
-        if (::findInMemory((unsigned char*)pImgDosHdr, pImgNtHdr->OptionalHeader.SizeOfImage, ::g_Sigs[::DoD_Sig::PlayerSpawn].Signature, &Addr, true))
+        if (::findInMemory((unsigned char*)pDosHdr, pNtHdr->OptionalHeader.SizeOfImage, ::g_Sigs[::DoD_Sig::PlayerSpawn].Signature, &Addr, true))
             ::g_pDoDPlayerSpawn_Addr = (void*)Addr;
         else
             ::MF_Log("::DoD_PlayerSpawn signature not found!");
@@ -3653,7 +4712,7 @@ void OnAmxxAttach()
 
     if (::g_Sigs[::DoD_Sig::GiveNamedItem].IsSymbol == false)
     {
-        if (::findInMemory((unsigned char*)pImgDosHdr, pImgNtHdr->OptionalHeader.SizeOfImage, ::g_Sigs[::DoD_Sig::GiveNamedItem].Signature, &Addr, true))
+        if (::findInMemory((unsigned char*)pDosHdr, pNtHdr->OptionalHeader.SizeOfImage, ::g_Sigs[::DoD_Sig::GiveNamedItem].Signature, &Addr, true))
             ::g_pDoDGiveNamedItem_Addr = (void*)Addr;
         else
             ::MF_Log("::DoD_GiveNamedItem signature not found!");
@@ -3663,7 +4722,7 @@ void OnAmxxAttach()
 
     if (::g_Sigs[::DoD_Sig::DropPlayerItem].IsSymbol == false)
     {
-        if (::findInMemory((unsigned char*)pImgDosHdr, pImgNtHdr->OptionalHeader.SizeOfImage, ::g_Sigs[::DoD_Sig::DropPlayerItem].Signature, &Addr, true))
+        if (::findInMemory((unsigned char*)pDosHdr, pNtHdr->OptionalHeader.SizeOfImage, ::g_Sigs[::DoD_Sig::DropPlayerItem].Signature, &Addr, true))
             ::g_pDoDDropPlayerItem_Addr = (void*)Addr;
         else
             ::MF_Log("::DoD_DropPlayerItem signature not found!");
@@ -3673,7 +4732,7 @@ void OnAmxxAttach()
 
     if (::g_Sigs[::DoD_Sig::GiveAmmo].IsSymbol == false)
     {
-        if (::findInMemory((unsigned char*)pImgDosHdr, pImgNtHdr->OptionalHeader.SizeOfImage, ::g_Sigs[::DoD_Sig::GiveAmmo].Signature, &Addr, true))
+        if (::findInMemory((unsigned char*)pDosHdr, pNtHdr->OptionalHeader.SizeOfImage, ::g_Sigs[::DoD_Sig::GiveAmmo].Signature, &Addr, true))
             ::g_pDoDGiveAmmo_Addr = (void*)Addr;
         else
             ::MF_Log("::DoD_GiveAmmo signature not found!");
@@ -3683,7 +4742,7 @@ void OnAmxxAttach()
 
     if (::g_Sigs[::DoD_Sig::UtilRemove].IsSymbol == false)
     {
-        if (::findInMemory((unsigned char*)pImgDosHdr, pImgNtHdr->OptionalHeader.SizeOfImage, ::g_Sigs[::DoD_Sig::UtilRemove].Signature, &Addr, true))
+        if (::findInMemory((unsigned char*)pDosHdr, pNtHdr->OptionalHeader.SizeOfImage, ::g_Sigs[::DoD_Sig::UtilRemove].Signature, &Addr, true))
             ::g_pDoDUtilRemove_Addr = (void*)Addr;
         else
             ::MF_Log("::DoD_UtilRemove signature not found!");
@@ -3693,7 +4752,7 @@ void OnAmxxAttach()
 
     if (::g_Sigs[::DoD_Sig::CreateNamedEntity].IsSymbol == false)
     {
-        if (::findInMemory((unsigned char*)pImgDosHdr, pImgNtHdr->OptionalHeader.SizeOfImage, ::g_Sigs[::DoD_Sig::CreateNamedEntity].Signature, &Addr, true))
+        if (::findInMemory((unsigned char*)pDosHdr, pNtHdr->OptionalHeader.SizeOfImage, ::g_Sigs[::DoD_Sig::CreateNamedEntity].Signature, &Addr, true))
             ::g_pDoDCreateNamedEntity_Addr = (void*)Addr;
         else
             ::MF_Log("::DoD_CreateNamedEntity signature not found!");
@@ -3703,7 +4762,7 @@ void OnAmxxAttach()
 
     if (::g_Sigs[::DoD_Sig::SubRemove].IsSymbol == false)
     {
-        if (::findInMemory((unsigned char*)pImgDosHdr, pImgNtHdr->OptionalHeader.SizeOfImage, ::g_Sigs[::DoD_Sig::SubRemove].Signature, &Addr, true))
+        if (::findInMemory((unsigned char*)pDosHdr, pNtHdr->OptionalHeader.SizeOfImage, ::g_Sigs[::DoD_Sig::SubRemove].Signature, &Addr, true))
             ::g_pDoDSubRemove_Addr = (void*)Addr;
         else
             ::MF_Log("::DoD_SubRemove signature not found!");
@@ -3713,7 +4772,7 @@ void OnAmxxAttach()
 
     if (::g_Sigs[::DoD_Sig::WpnBoxKill].IsSymbol == false)
     {
-        if (::findInMemory((unsigned char*)pImgDosHdr, pImgNtHdr->OptionalHeader.SizeOfImage, ::g_Sigs[::DoD_Sig::WpnBoxKill].Signature, &Addr, true))
+        if (::findInMemory((unsigned char*)pDosHdr, pNtHdr->OptionalHeader.SizeOfImage, ::g_Sigs[::DoD_Sig::WpnBoxKill].Signature, &Addr, true))
             ::g_pDoDWpnBoxKill_Addr = (void*)Addr;
         else
             ::MF_Log("::DoD_WpnBoxKill signature not found!");
@@ -3723,7 +4782,7 @@ void OnAmxxAttach()
 
     if (::g_Sigs[::DoD_Sig::WpnBoxActivateThink].IsSymbol == false)
     {
-        if (::findInMemory((unsigned char*)pImgDosHdr, pImgNtHdr->OptionalHeader.SizeOfImage, ::g_Sigs[::DoD_Sig::WpnBoxActivateThink].Signature, &Addr, true))
+        if (::findInMemory((unsigned char*)pDosHdr, pNtHdr->OptionalHeader.SizeOfImage, ::g_Sigs[::DoD_Sig::WpnBoxActivateThink].Signature, &Addr, true))
             ::g_pDoDWpnBoxActivateThink_Addr = (void*)Addr;
         else
             ::MF_Log("::DoD_WpnBoxActivateThink signature not found!");
@@ -3731,9 +4790,29 @@ void OnAmxxAttach()
     else if (!(::g_pDoDWpnBoxActivateThink_Addr = (void*) ::GetProcAddress(pDoD, ::g_Sigs[::DoD_Sig::WpnBoxActivateThink].Symbol.c_str())))
         ::MF_Log("::DoD_WpnBoxActivateThink symbol not found!");
 
+    if (::g_Sigs[::DoD_Sig::ChangePlayerTeam].IsSymbol == false)
+    {
+        if (::findInMemory((unsigned char*)pDosHdr, pNtHdr->OptionalHeader.SizeOfImage, ::g_Sigs[::DoD_Sig::ChangePlayerTeam].Signature, &Addr, true))
+            ::g_pDoDChangePlayerTeam_Addr = (void*)Addr;
+        else
+            ::MF_Log("::DoD_ChangePlayerTeam signature not found!");
+    }
+    else if (!(::g_pDoDChangePlayerTeam_Addr = (void*) ::GetProcAddress(pDoD, ::g_Sigs[::DoD_Sig::ChangePlayerTeam].Symbol.c_str())))
+        ::MF_Log("::DoD_ChangePlayerTeam symbol not found!");
+
+    if (::g_Sigs[::DoD_Sig::ChooseRandomClass].IsSymbol == false)
+    {
+        if (::findInMemory((unsigned char*)pDosHdr, pNtHdr->OptionalHeader.SizeOfImage, ::g_Sigs[::DoD_Sig::ChooseRandomClass].Signature, &Addr, true))
+            ::g_pDoDChooseRandomClass_Addr = (void*)Addr;
+        else
+            ::MF_Log("::DoD_ChooseRandomClass signature not found!");
+    }
+    else if (!(::g_pDoDChooseRandomClass_Addr = (void*) ::GetProcAddress(pDoD, ::g_Sigs[::DoD_Sig::ChooseRandomClass].Symbol.c_str())))
+        ::MF_Log("::DoD_ChooseRandomClass symbol not found!");
+
     if (::g_Sigs[::DoD_Sig::Create].IsSymbol == false)
     {
-        if (::findInMemory((unsigned char*)pImgDosHdr, pImgNtHdr->OptionalHeader.SizeOfImage, ::g_Sigs[::DoD_Sig::Create].Signature, &Addr, true))
+        if (::findInMemory((unsigned char*)pDosHdr, pNtHdr->OptionalHeader.SizeOfImage, ::g_Sigs[::DoD_Sig::Create].Signature, &Addr, true))
             ::g_pDoDCreate_Addr = (void*)Addr;
         else
             ::MF_Log("::DoD_Create signature not found!");
@@ -3743,7 +4822,7 @@ void OnAmxxAttach()
 
     if (::g_Sigs[::DoD_Sig::PackWeapon].IsSymbol == false)
     {
-        if (::findInMemory((unsigned char*)pImgDosHdr, pImgNtHdr->OptionalHeader.SizeOfImage, ::g_Sigs[::DoD_Sig::PackWeapon].Signature, &Addr, true))
+        if (::findInMemory((unsigned char*)pDosHdr, pNtHdr->OptionalHeader.SizeOfImage, ::g_Sigs[::DoD_Sig::PackWeapon].Signature, &Addr, true))
             ::g_pDoDPackWeapon_Addr = (void*)Addr;
         else
             ::MF_Log("::DoD_PackWeapon signature not found!");
@@ -3753,7 +4832,7 @@ void OnAmxxAttach()
 
     if (::g_Sigs[::DoD_Sig::DestroyItem].IsSymbol == false)
     {
-        if (::findInMemory((unsigned char*)pImgDosHdr, pImgNtHdr->OptionalHeader.SizeOfImage, ::g_Sigs[::DoD_Sig::DestroyItem].Signature, &Addr, true))
+        if (::findInMemory((unsigned char*)pDosHdr, pNtHdr->OptionalHeader.SizeOfImage, ::g_Sigs[::DoD_Sig::DestroyItem].Signature, &Addr, true))
             ::g_pDoDDestroyItem_Addr = (void*)Addr;
         else
             ::MF_Log("::DoD_DestroyItem signature not found!");
@@ -3763,7 +4842,7 @@ void OnAmxxAttach()
 
     if (::g_Sigs[::DoD_Sig::SetWaveTime].IsSymbol == false)
     {
-        if (::findInMemory((unsigned char*)pImgDosHdr, pImgNtHdr->OptionalHeader.SizeOfImage, ::g_Sigs[::DoD_Sig::SetWaveTime].Signature, &Addr, true))
+        if (::findInMemory((unsigned char*)pDosHdr, pNtHdr->OptionalHeader.SizeOfImage, ::g_Sigs[::DoD_Sig::SetWaveTime].Signature, &Addr, true))
             ::g_pDoDSetWaveTime_Addr = (void*)Addr;
         else
             ::MF_Log("::DoD_SetWaveTime signature not found!");
@@ -3773,7 +4852,7 @@ void OnAmxxAttach()
 
     if (::g_Sigs[::DoD_Sig::GetWaveTime].IsSymbol == false)
     {
-        if (::findInMemory((unsigned char*)pImgDosHdr, pImgNtHdr->OptionalHeader.SizeOfImage, ::g_Sigs[::DoD_Sig::GetWaveTime].Signature, &Addr, true))
+        if (::findInMemory((unsigned char*)pDosHdr, pNtHdr->OptionalHeader.SizeOfImage, ::g_Sigs[::DoD_Sig::GetWaveTime].Signature, &Addr, true))
             ::g_pDoDGetWaveTime_Addr = (void*)Addr;
         else
             ::MF_Log("::DoD_GetWaveTime signature not found!");
@@ -3783,7 +4862,7 @@ void OnAmxxAttach()
 
     if (::g_Sigs[::DoD_Sig::RemovePlayerItem].IsSymbol == false)
     {
-        if (::findInMemory((unsigned char*)pImgDosHdr, pImgNtHdr->OptionalHeader.SizeOfImage, ::g_Sigs[::DoD_Sig::RemovePlayerItem].Signature, &Addr, true))
+        if (::findInMemory((unsigned char*)pDosHdr, pNtHdr->OptionalHeader.SizeOfImage, ::g_Sigs[::DoD_Sig::RemovePlayerItem].Signature, &Addr, true))
             ::g_pDoDRemovePlayerItem_Addr = (void*)Addr;
         else
             ::MF_Log("::DoD_RemovePlayerItem signature not found!");
@@ -3793,7 +4872,7 @@ void OnAmxxAttach()
 
     if (::g_Sigs[::DoD_Sig::AddPlayerItem].IsSymbol == false)
     {
-        if (::findInMemory((unsigned char*)pImgDosHdr, pImgNtHdr->OptionalHeader.SizeOfImage, ::g_Sigs[::DoD_Sig::AddPlayerItem].Signature, &Addr, true))
+        if (::findInMemory((unsigned char*)pDosHdr, pNtHdr->OptionalHeader.SizeOfImage, ::g_Sigs[::DoD_Sig::AddPlayerItem].Signature, &Addr, true))
             ::g_pDoDAddPlayerItem_Addr = (void*)Addr;
         else
             ::MF_Log("::DoD_AddPlayerItem signature not found!");
@@ -3803,7 +4882,7 @@ void OnAmxxAttach()
 
     if (::g_Sigs[::DoD_Sig::RemoveAllItems].IsSymbol == false)
     {
-        if (::findInMemory((unsigned char*)pImgDosHdr, pImgNtHdr->OptionalHeader.SizeOfImage, ::g_Sigs[::DoD_Sig::RemoveAllItems].Signature, &Addr, true))
+        if (::findInMemory((unsigned char*)pDosHdr, pNtHdr->OptionalHeader.SizeOfImage, ::g_Sigs[::DoD_Sig::RemoveAllItems].Signature, &Addr, true))
             ::g_pDoDRemoveAllItems_Addr = (void*)Addr;
         else
             ::MF_Log("::DoD_RemoveAllItems signature not found!");
@@ -3813,7 +4892,7 @@ void OnAmxxAttach()
 
     if (::g_Sigs[::DoD_Sig::SetBodygroup].IsSymbol == false)
     {
-        if (::findInMemory((unsigned char*)pImgDosHdr, pImgNtHdr->OptionalHeader.SizeOfImage, ::g_Sigs[::DoD_Sig::SetBodygroup].Signature, &Addr, true))
+        if (::findInMemory((unsigned char*)pDosHdr, pNtHdr->OptionalHeader.SizeOfImage, ::g_Sigs[::DoD_Sig::SetBodygroup].Signature, &Addr, true))
             ::g_pDoDSetBodygroup_Addr = (void*)Addr;
         else
             ::MF_Log("::DoD_SetBodygroup signature not found!");
@@ -3823,7 +4902,7 @@ void OnAmxxAttach()
 
     if (::g_Sigs[::DoD_Sig::InstallGameRules].IsSymbol == false)
     {
-        if (::findInMemory((unsigned char*)pImgDosHdr, pImgNtHdr->OptionalHeader.SizeOfImage, ::g_Sigs[::DoD_Sig::InstallGameRules].Signature, &Addr, true))
+        if (::findInMemory((unsigned char*)pDosHdr, pNtHdr->OptionalHeader.SizeOfImage, ::g_Sigs[::DoD_Sig::InstallGameRules].Signature, &Addr, true))
             ::g_pDoDInstallGameRules_Addr = (void*)Addr;
         else
             ::MF_Log("::DoD_InstallGameRules signature not found!");
@@ -3831,12 +4910,12 @@ void OnAmxxAttach()
     else if (!(::g_pDoDInstallGameRules_Addr = (void*) ::GetProcAddress(pDoD, ::g_Sigs[::DoD_Sig::InstallGameRules].Symbol.c_str())))
         ::MF_Log("::DoD_InstallGameRules symbol not found!");
 
-    if (::findInMemory((unsigned char*)pImgDosHdr, pImgNtHdr->OptionalHeader.SizeOfImage, ::g_Sigs[::DoD_Sig::PatchFg42].Signature, &Addr, true))
+    if (::findInMemory((unsigned char*)pDosHdr, pNtHdr->OptionalHeader.SizeOfImage, ::g_Sigs[::DoD_Sig::PatchFg42].Signature, &Addr, true))
         ::g_pAutoScopeFG42Addr = (unsigned char*)Addr;
     else
         ::MF_Log("::DoD_PatchAutoScope(FG42) signature not found!");
 
-    if (::findInMemory((unsigned char*)pImgDosHdr, pImgNtHdr->OptionalHeader.SizeOfImage, ::g_Sigs[::DoD_Sig::PatchEnfield].Signature, &Addr, true))
+    if (::findInMemory((unsigned char*)pDosHdr, pNtHdr->OptionalHeader.SizeOfImage, ::g_Sigs[::DoD_Sig::PatchEnfield].Signature, &Addr, true))
         ::g_pAutoScopeEnfieldAddr = (unsigned char*)Addr;
     else
         ::MF_Log("::DoD_PatchAutoScope(Enfield) signature not found!");
@@ -3859,8 +4938,39 @@ void OnAmxxAttach()
         ::g_fn_AddNatives(::DoDHacks_Natives);
         return;
     }
+
+    /// Engine module.
+    auto pDoD = ::openLib("engine", ::DoD_Suffix::i486);
+    if (pDoD)
+    {
+        auto pLinkMap = (::link_map*)pDoD;
+        struct ::stat memData;
+        if (!::stat(pLinkMap->l_name, &memData))
+        {
+            ::size_t Addr = false;
+
+            if (::g_Sigs[::DoD_Sig::Engine_CalcPing_New].IsSymbol)
+                ::g_pDoDEngine_CalcPing_Addr = ::dlsymComplex(pDoD, ::g_Sigs[::DoD_Sig::Engine_CalcPing_New].Symbol.c_str());
+            else if (::findInMemory((unsigned char*)pLinkMap->l_addr, memData.st_size, ::g_Sigs[::DoD_Sig::Engine_CalcPing_New].Signature, &Addr, true))
+                ::g_pDoDEngine_CalcPing_Addr = (void*)Addr;
+
+            if (!::g_pDoDEngine_CalcPing_Addr)
+            {
+                if (::g_Sigs[::DoD_Sig::Engine_CalcPing_Old].IsSymbol)
+                    ::g_pDoDEngine_CalcPing_Addr = ::dlsymComplex(pDoD, ::g_Sigs[::DoD_Sig::Engine_CalcPing_Old].Symbol.c_str());
+                else if (::findInMemory((unsigned char*)pLinkMap->l_addr, memData.st_size, ::g_Sigs[::DoD_Sig::Engine_CalcPing_Old].Signature, &Addr, true))
+                    ::g_pDoDEngine_CalcPing_Addr = (void*)Addr;
+
+                if (!::g_pDoDEngine_CalcPing_Addr)
+                    ::MF_Log("::DoD_Engine_CalcPing symbol/ signature not found!");
+            }
+        }
+        ::dlclose(pDoD);
+    }
+
+    /// Game module.
     /** Try opening with suffix initially, for compatibility (i.e. people trying to use outdated BOT plugins). */
-    void* pDoD = ::openLib("dod", ::DoD_Suffix::i386);
+    pDoD = ::openLib("dod", ::DoD_Suffix::i386);
     if (!pDoD)
     {
         pDoD = ::openLib("dod", ::DoD_Suffix::i486);
@@ -3955,6 +5065,32 @@ void OnAmxxAttach()
             ::g_pDoDWpnBoxActivateThink_Addr = (void*)Addr;
         else
             ::MF_Log("::DoD_WpnBoxActivateThink signature not found!");
+    }
+
+    if (::g_Sigs[::DoD_Sig::ChangePlayerTeam].IsSymbol)
+    {
+        if (!(::g_pDoDChangePlayerTeam_Addr = ::dlsymComplex(pDoD, ::g_Sigs[::DoD_Sig::ChangePlayerTeam].Symbol.c_str())))
+            ::MF_Log("::DoD_ChangePlayerTeam symbol not found!");
+    }
+    else
+    {
+        if (::findInMemory((unsigned char*)pLinkMap->l_addr, memData.st_size, ::g_Sigs[::DoD_Sig::ChangePlayerTeam].Signature, &Addr, true))
+            ::g_pDoDChangePlayerTeam_Addr = (void*)Addr;
+        else
+            ::MF_Log("::DoD_ChangePlayerTeam signature not found!");
+    }
+
+    if (::g_Sigs[::DoD_Sig::ChooseRandomClass].IsSymbol)
+    {
+        if (!(::g_pDoDChooseRandomClass_Addr = ::dlsymComplex(pDoD, ::g_Sigs[::DoD_Sig::ChooseRandomClass].Symbol.c_str())))
+            ::MF_Log("::DoD_ChooseRandomClass symbol not found!");
+    }
+    else
+    {
+        if (::findInMemory((unsigned char*)pLinkMap->l_addr, memData.st_size, ::g_Sigs[::DoD_Sig::ChooseRandomClass].Signature, &Addr, true))
+            ::g_pDoDChooseRandomClass_Addr = (void*)Addr;
+        else
+            ::MF_Log("::DoD_ChooseRandomClass signature not found!");
     }
 
     if (::g_Sigs[::DoD_Sig::Create].IsSymbol)
@@ -4254,6 +5390,14 @@ void OnAmxxDetach()
         ::DetourTransactionCommit();
         ::g_DoDInstallGameRules_Hook = false;
     }
+    if (::g_pDoDEngine_CalcPing_Hook)
+    {
+        ::DetourTransactionBegin();
+        ::DetourUpdateThread(::GetCurrentThread());
+        ::DetourDetach(&(void*&) ::DoD_Engine_CalcPing, ::DoD_Engine_CalcPing_Hook);
+        ::DetourTransactionCommit();
+        ::g_pDoDEngine_CalcPing_Hook = false;
+    }
     if (::g_DoDUtilRemove_Hook)
     {
         ::DetourTransactionBegin();
@@ -4293,6 +5437,22 @@ void OnAmxxDetach()
         ::DetourDetach(&(void*&) ::DoD_WpnBoxActivateThink, ::DoD_WpnBoxActivateThink_Hook);
         ::DetourTransactionCommit();
         ::g_DoDWpnBoxActivateThink_Hook = false;
+    }
+    if (::g_DoDChangePlayerTeam_Hook)
+    {
+        ::DetourTransactionBegin();
+        ::DetourUpdateThread(::GetCurrentThread());
+        ::DetourDetach(&(void*&) ::DoD_ChangePlayerTeam, ::DoD_ChangePlayerTeam_Hook);
+        ::DetourTransactionCommit();
+        ::g_DoDChangePlayerTeam_Hook = false;
+    }
+    if (::g_DoDChooseRandomClass_Hook)
+    {
+        ::DetourTransactionBegin();
+        ::DetourUpdateThread(::GetCurrentThread());
+        ::DetourDetach(&(void*&) ::DoD_ChooseRandomClass, ::DoD_ChooseRandomClass_Hook);
+        ::DetourTransactionCommit();
+        ::g_DoDChooseRandomClass_Hook = false;
     }
     if (::g_DoDCreate_Hook)
     {
@@ -4385,6 +5545,12 @@ void OnAmxxDetach()
         ::subhook_free(::g_pDoDInstallGameRules);
         ::g_DoDInstallGameRules_Hook = false;
     }
+    if (::g_pDoDEngine_CalcPing_Hook)
+    {
+        ::subhook_remove(::g_pDoDEngine_CalcPing);
+        ::subhook_free(::g_pDoDEngine_CalcPing);
+        ::g_pDoDEngine_CalcPing_Hook = false;
+    }
     if (::g_DoDDestroyItem_Hook)
     {
         ::subhook_remove(::g_pDoDDestroyItem);
@@ -4408,6 +5574,18 @@ void OnAmxxDetach()
         ::subhook_remove(::g_pDoDWpnBoxActivateThink);
         ::subhook_free(::g_pDoDWpnBoxActivateThink);
         ::g_DoDWpnBoxActivateThink_Hook = false;
+    }
+    if (::g_DoDChangePlayerTeam_Hook)
+    {
+        ::subhook_remove(::g_pDoDChangePlayerTeam);
+        ::subhook_free(::g_pDoDChangePlayerTeam);
+        ::g_DoDChangePlayerTeam_Hook = false;
+    }
+    if (::g_DoDChooseRandomClass_Hook)
+    {
+        ::subhook_remove(::g_pDoDChooseRandomClass);
+        ::subhook_free(::g_pDoDChooseRandomClass);
+        ::g_DoDChooseRandomClass_Hook = false;
     }
     if (::g_DoDCreate_Hook)
     {
@@ -4465,7 +5643,10 @@ void OnAmxxDetach()
     ::g_pDoDCreateNamedEntity_Addr = NULL;
     ::g_pDoDCreate_Addr = NULL;
     ::g_pDoDWpnBoxActivateThink_Addr = NULL;
+    ::g_pDoDChangePlayerTeam_Addr = NULL;
+    ::g_pDoDChooseRandomClass_Addr = NULL;
     ::g_pDoDWpnBoxKill_Addr = NULL;
+    ::g_pDoDEngine_CalcPing_Addr = NULL;
 
     ::g_Sigs.clear();
 }
@@ -4489,8 +5670,11 @@ void OnPluginsLoaded()
     ::g_fwPackWeapon = ::g_fn_RegisterForward("DoD_OnPackWeapon", ::ET_STOP, ::FP_CELL, ::FP_CELL_BYREF /** can be altered during exec */, ::FP_CELL_BYREF /** can be altered during exec */, ::FP_DONE);
     ::g_fwWpnBoxKill = ::g_fn_RegisterForward("DoD_OnWpnBoxKill", ::ET_STOP, ::FP_CELL, ::FP_DONE);
     ::g_fwWpnBoxActivateThink = ::g_fn_RegisterForward("DoD_OnWpnBoxActivateThink", ::ET_STOP, ::FP_CELL, ::FP_DONE);
+    ::g_fwChangePlayerTeam = ::g_fn_RegisterForward("DoD_OnChangePlayerTeam", ::ET_STOP, ::FP_CELL, ::FP_CELL_BYREF /** can be altered during exec */, ::FP_CELL_BYREF /** can be altered during exec */, ::FP_CELL_BYREF /** can be altered during exec */, ::FP_CELL_BYREF /** can be altered during exec */, ::FP_DONE);
+    ::g_fwChooseRandomClass = ::g_fn_RegisterForward("DoD_OnChooseRandomClass", ::ET_STOP, ::FP_CELL, ::FP_CELL_BYREF /** can be altered during exec */, ::FP_DONE);
     ::g_fwCreate = ::g_fn_RegisterForward("DoD_OnCreate", ::ET_STOP, ::FP_STRINGEX /** can be altered during exec */, ::FP_CELL, ::FP_ARRAY, ::FP_ARRAY, ::FP_CELL_BYREF /** can be altered during exec */, ::FP_CELL_BYREF /** can be altered during exec */, ::FP_DONE);
     ::g_fwCreateNamedEntity = ::g_fn_RegisterForward("DoD_OnCreateNamedEntity", ::ET_STOP, ::FP_STRINGEX /** can be altered during exec */, ::FP_CELL, ::FP_CELL_BYREF /** can be altered during exec */, ::FP_DONE);
+    ::g_fwEngine_CalcPing = ::g_fn_RegisterForward("DoD_OnEngine_CalcPing", ::ET_STOP, ::FP_CELL, ::FP_CELL_BYREF /** can be altered during exec */, ::FP_DONE);
 
     ::g_fwPlayerSpawn_Post = ::g_fn_RegisterForward("DoD_OnPlayerSpawn_Post", ::ET_IGNORE, ::FP_CELL, ::FP_CELL, ::FP_DONE);
     ::g_fwGiveNamedItem_Post = ::g_fn_RegisterForward("DoD_OnGiveNamedItem_Post", ::ET_IGNORE, ::FP_CELL, ::FP_STRING, ::FP_CELL, ::FP_DONE);
@@ -4509,8 +5693,11 @@ void OnPluginsLoaded()
     ::g_fwPackWeapon_Post = ::g_fn_RegisterForward("DoD_OnPackWeapon_Post", ::ET_IGNORE, ::FP_CELL, ::FP_CELL, ::FP_CELL, ::FP_DONE);
     ::g_fwWpnBoxKill_Post = ::g_fn_RegisterForward("DoD_OnWpnBoxKill_Post", ::ET_IGNORE, ::FP_CELL, ::FP_DONE);
     ::g_fwWpnBoxActivateThink_Post = ::g_fn_RegisterForward("DoD_OnWpnBoxActivateThink_Post", ::ET_IGNORE, ::FP_CELL, ::FP_DONE);
+    ::g_fwChangePlayerTeam_Post = ::g_fn_RegisterForward("DoD_OnChangePlayerTeam_Post", ::ET_IGNORE, ::FP_CELL, ::FP_CELL, ::FP_CELL, ::FP_CELL, ::FP_CELL, ::FP_DONE);
+    ::g_fwChooseRandomClass_Post = ::g_fn_RegisterForward("DoD_OnChooseRandomClass_Post", ::ET_IGNORE, ::FP_CELL, ::FP_CELL, ::FP_CELL, ::FP_DONE);
     ::g_fwCreate_Post = ::g_fn_RegisterForward("DoD_OnCreate_Post", ::ET_IGNORE, ::FP_STRING, ::FP_ARRAY, ::FP_ARRAY, ::FP_CELL, ::FP_CELL, ::FP_DONE);
     ::g_fwCreateNamedEntity_Post = ::g_fn_RegisterForward("DoD_OnCreateNamedEntity_Post", ::ET_IGNORE, ::FP_STRING, ::FP_CELL, ::FP_DONE);
+    ::g_fwEngine_CalcPing_Post = ::g_fn_RegisterForward("DoD_OnEngine_CalcPing_Post", ::ET_IGNORE, ::FP_CELL, ::FP_CELL, ::FP_DONE);
 
     ::tagAMX* pAmx;
     int Func, Iter = false;
@@ -4673,6 +5860,30 @@ void OnPluginsLoaded()
             ::g_DoDWpnBoxActivateThink_Hook = true;
         }
 
+        if (::g_pDoDChangePlayerTeam_Addr && false == ::g_DoDChangePlayerTeam_Hook &&
+            (::g_fn_AmxFindPublic(pAmx, "DoD_OnChangePlayerTeam", &Func) == ::AMX_ERR_NONE ||
+                ::g_fn_AmxFindPublic(pAmx, "DoD_OnChangePlayerTeam_Post", &Func) == ::AMX_ERR_NONE))
+        {
+            ::DoD_ChangePlayerTeam = (::DoD_ChangePlayerTeam_Type) ::g_pDoDChangePlayerTeam_Addr;
+            ::DetourTransactionBegin();
+            ::DetourUpdateThread(::GetCurrentThread());
+            ::DetourAttach(&(void*&) ::DoD_ChangePlayerTeam, ::DoD_ChangePlayerTeam_Hook);
+            ::DetourTransactionCommit();
+            ::g_DoDChangePlayerTeam_Hook = true;
+        }
+
+        if (::g_pDoDChooseRandomClass_Addr && false == ::g_DoDChooseRandomClass_Hook &&
+            (::g_fn_AmxFindPublic(pAmx, "DoD_OnChooseRandomClass", &Func) == ::AMX_ERR_NONE ||
+                ::g_fn_AmxFindPublic(pAmx, "DoD_OnChooseRandomClass_Post", &Func) == ::AMX_ERR_NONE))
+        {
+            ::DoD_ChooseRandomClass = (::DoD_ChooseRandomClass_Type) ::g_pDoDChooseRandomClass_Addr;
+            ::DetourTransactionBegin();
+            ::DetourUpdateThread(::GetCurrentThread());
+            ::DetourAttach(&(void*&) ::DoD_ChooseRandomClass, ::DoD_ChooseRandomClass_Hook);
+            ::DetourTransactionCommit();
+            ::g_DoDChooseRandomClass_Hook = true;
+        }
+
         if (::g_pDoDCreate_Addr && false == ::g_DoDCreate_Hook &&
             (::g_fn_AmxFindPublic(pAmx, "DoD_OnCreate", &Func) == ::AMX_ERR_NONE ||
                 ::g_fn_AmxFindPublic(pAmx, "DoD_OnCreate_Post", &Func) == ::AMX_ERR_NONE))
@@ -4719,6 +5930,18 @@ void OnPluginsLoaded()
             ::DetourAttach(&(void*&) ::DoD_CreateNamedEntity, ::DoD_CreateNamedEntity_Hook);
             ::DetourTransactionCommit();
             ::g_DoDCreateNamedEntity_Hook = true;
+        }
+
+        if (::g_pDoDEngine_CalcPing_Addr && false == ::g_pDoDEngine_CalcPing_Hook &&
+            (::g_fn_AmxFindPublic(pAmx, "DoD_OnEngine_CalcPing", &Func) == ::AMX_ERR_NONE ||
+                ::g_fn_AmxFindPublic(pAmx, "DoD_OnEngine_CalcPing_Post", &Func) == ::AMX_ERR_NONE))
+        {
+            ::DoD_Engine_CalcPing = (::DoD_Engine_CalcPing_Type) ::g_pDoDEngine_CalcPing_Addr;
+            ::DetourTransactionBegin();
+            ::DetourUpdateThread(::GetCurrentThread());
+            ::DetourAttach(&(void*&) ::DoD_Engine_CalcPing, ::DoD_Engine_CalcPing_Hook);
+            ::DetourTransactionCommit();
+            ::g_pDoDEngine_CalcPing_Hook = true;
         }
 
         if (::g_pDoDDestroyItem_Addr && false == ::g_DoDDestroyItem_Hook &&
@@ -4873,6 +6096,26 @@ void OnPluginsLoaded()
             ::g_DoDWpnBoxActivateThink_Hook = true;
         }
 
+        if (::g_pDoDChangePlayerTeam_Addr && false == ::g_DoDChangePlayerTeam_Hook &&
+            (::g_fn_AmxFindPublic(pAmx, "DoD_OnChangePlayerTeam", &Func) == ::AMX_ERR_NONE ||
+                ::g_fn_AmxFindPublic(pAmx, "DoD_OnChangePlayerTeam_Post", &Func) == ::AMX_ERR_NONE))
+        {
+            ::g_pDoDChangePlayerTeam = ::subhook_new(::g_pDoDChangePlayerTeam_Addr, ::DoD_ChangePlayerTeam_Hook, ::SUBHOOK_TRAMPOLINE);
+            ::subhook_install(::g_pDoDChangePlayerTeam);
+            ::DoD_ChangePlayerTeam = (::DoD_ChangePlayerTeam_Type) ::subhook_get_trampoline(::g_pDoDChangePlayerTeam);
+            ::g_DoDChangePlayerTeam_Hook = true;
+        }
+
+        if (::g_pDoDChooseRandomClass_Addr && false == ::g_DoDChooseRandomClass_Hook &&
+            (::g_fn_AmxFindPublic(pAmx, "DoD_OnChooseRandomClass", &Func) == ::AMX_ERR_NONE ||
+                ::g_fn_AmxFindPublic(pAmx, "DoD_OnChooseRandomClass_Post", &Func) == ::AMX_ERR_NONE))
+        {
+            ::g_pDoDChooseRandomClass = ::subhook_new(::g_pDoDChooseRandomClass_Addr, ::DoD_ChooseRandomClass_Hook, ::SUBHOOK_TRAMPOLINE);
+            ::subhook_install(::g_pDoDChooseRandomClass);
+            ::DoD_ChooseRandomClass = (::DoD_ChooseRandomClass_Type) ::subhook_get_trampoline(::g_pDoDChooseRandomClass);
+            ::g_DoDChooseRandomClass_Hook = true;
+        }
+
         if (::g_pDoDPackWeapon_Addr && false == ::g_DoDPackWeapon_Hook &&
             (::g_fn_AmxFindPublic(pAmx, "DoD_OnPackWeapon", &Func) == ::AMX_ERR_NONE ||
                 ::g_fn_AmxFindPublic(pAmx, "DoD_OnPackWeapon_Post", &Func) == ::AMX_ERR_NONE))
@@ -4903,6 +6146,16 @@ void OnPluginsLoaded()
             ::g_DoDCreateNamedEntity_Hook = true;
         }
 
+        if (::g_pDoDEngine_CalcPing_Addr && false == ::g_pDoDEngine_CalcPing_Hook &&
+            (::g_fn_AmxFindPublic(pAmx, "DoD_OnEngine_CalcPing", &Func) == ::AMX_ERR_NONE ||
+                ::g_fn_AmxFindPublic(pAmx, "DoD_OnEngine_CalcPing_Post", &Func) == ::AMX_ERR_NONE))
+        {
+            ::g_pDoDEngine_CalcPing = ::subhook_new(::g_pDoDEngine_CalcPing_Addr, ::DoD_Engine_CalcPing_Hook, ::SUBHOOK_TRAMPOLINE);
+            ::subhook_install(::g_pDoDEngine_CalcPing);
+            ::DoD_Engine_CalcPing = (::DoD_Engine_CalcPing_Type) ::subhook_get_trampoline(::g_pDoDEngine_CalcPing);
+            ::g_pDoDEngine_CalcPing_Hook = true;
+        }
+
         if (::g_pDoDDestroyItem_Addr && false == ::g_DoDDestroyItem_Hook &&
             (::g_fn_AmxFindPublic(pAmx, "DoD_OnDestroyItem", &Func) == ::AMX_ERR_NONE ||
                 ::g_fn_AmxFindPublic(pAmx, "DoD_OnDestroyItem_Post", &Func) == ::AMX_ERR_NONE))
@@ -4918,14 +6171,20 @@ void OnPluginsLoaded()
 
 void OnPluginsUnloaded()
 {
+    ::g_pEntities = NULL;
     ::g_selfNade = false;
     ::g_droppedNade = false;
+    ::g_pFunctionTable->pfnCmdStart = NULL;
+    ::g_pNewFunctionsTable->pfnShouldCollide = NULL;
     ::g_pFunctionTable_Post->pfnAddToFullPack = NULL;
+    ::g_pFunctionTable_Post->pfnClientPutInServer = NULL;
     ::g_Strings.clear();
     ::g_CustomKeyValues_Add.clear();
     ::g_CustomKeyValues_Del.clear();
-    ::memset(&::g_exclFromExploNadeProjGlow, false, sizeof(::g_exclFromExploNadeProjGlow));
-    ::memset(&::g_exclFromDroppedExploNadeGlow, false, sizeof(::g_exclFromDroppedExploNadeGlow));
+    ::g_blockedFromPlayerCollision.clear();
+    ::memset(&::g_svPlayerEngPtrs, false, sizeof(::g_svPlayerEngPtrs));
+    ::memset(&::g_exclSelfNadeGlow, false, sizeof(::g_exclSelfNadeGlow));
+    ::memset(&::g_exclDroppedNadeGlow, false, sizeof(::g_exclDroppedNadeGlow));
 #ifndef __linux__
     if (::g_DoDPlayerSpawn_Hook)
     {
@@ -5023,6 +6282,14 @@ void OnPluginsUnloaded()
         ::DetourTransactionCommit();
         ::g_DoDCreateNamedEntity_Hook = false;
     }
+    if (::g_pDoDEngine_CalcPing_Hook)
+    {
+        ::DetourTransactionBegin();
+        ::DetourUpdateThread(::GetCurrentThread());
+        ::DetourDetach(&(void*&) ::DoD_Engine_CalcPing, ::DoD_Engine_CalcPing_Hook);
+        ::DetourTransactionCommit();
+        ::g_pDoDEngine_CalcPing_Hook = false;
+    }
     if (::g_DoDSubRemove_Hook)
     {
         ::DetourTransactionBegin();
@@ -5054,6 +6321,22 @@ void OnPluginsUnloaded()
         ::DetourDetach(&(void*&) ::DoD_WpnBoxActivateThink, ::DoD_WpnBoxActivateThink_Hook);
         ::DetourTransactionCommit();
         ::g_DoDWpnBoxActivateThink_Hook = false;
+    }
+    if (::g_DoDChangePlayerTeam_Hook)
+    {
+        ::DetourTransactionBegin();
+        ::DetourUpdateThread(::GetCurrentThread());
+        ::DetourDetach(&(void*&) ::DoD_ChangePlayerTeam, ::DoD_ChangePlayerTeam_Hook);
+        ::DetourTransactionCommit();
+        ::g_DoDChangePlayerTeam_Hook = false;
+    }
+    if (::g_DoDChooseRandomClass_Hook)
+    {
+        ::DetourTransactionBegin();
+        ::DetourUpdateThread(::GetCurrentThread());
+        ::DetourDetach(&(void*&) ::DoD_ChooseRandomClass, ::DoD_ChooseRandomClass_Hook);
+        ::DetourTransactionCommit();
+        ::g_DoDChooseRandomClass_Hook = false;
     }
     if (::g_DoDPackWeapon_Hook)
     {
@@ -5162,6 +6445,18 @@ void OnPluginsUnloaded()
         ::subhook_free(::g_pDoDWpnBoxActivateThink);
         ::g_DoDWpnBoxActivateThink_Hook = false;
     }
+    if (::g_DoDChangePlayerTeam_Hook)
+    {
+        ::subhook_remove(::g_pDoDChangePlayerTeam);
+        ::subhook_free(::g_pDoDChangePlayerTeam);
+        ::g_DoDChangePlayerTeam_Hook = false;
+    }
+    if (::g_DoDChooseRandomClass_Hook)
+    {
+        ::subhook_remove(::g_pDoDChooseRandomClass);
+        ::subhook_free(::g_pDoDChooseRandomClass);
+        ::g_DoDChooseRandomClass_Hook = false;
+    }
     if (::g_DoDPackWeapon_Hook)
     {
         ::subhook_remove(::g_pDoDPackWeapon);
@@ -5180,5 +6475,17 @@ void OnPluginsUnloaded()
         ::subhook_free(::g_pDoDCreateNamedEntity);
         ::g_DoDCreateNamedEntity_Hook = false;
     }
+    if (::g_pDoDEngine_CalcPing_Hook)
+    {
+        ::subhook_remove(::g_pDoDEngine_CalcPing);
+        ::subhook_free(::g_pDoDEngine_CalcPing);
+        ::g_pDoDEngine_CalcPing_Hook = false;
+    }
 #endif
+}
+
+void OnMetaAttach()
+{
+    ::gpMetaUtilFuncs->pfnGetHookTables(&::Plugin_info, &::g_pEngineHookTable, &::g_pFunctionHookTable, &::g_pNewFunctionHookTable);
+    ::g_engfuncs.pfnCVarRegister(&::g_Version);
 }
