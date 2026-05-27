@@ -44,7 +44,7 @@ new cvarhook: g_hookHostNameConVarChange;
 
 public plugin_init()
 {
-    register_plugin("DoD Hacks: Host Name", "1.0.0.4", "Hattrick HKS (claudiuhks)");
+    register_plugin("DoD Hacks: Host Name", "1.0.0.5", "Hattrick HKS (claudiuhks)");
     g_cvarHostName = get_cvar_pointer("hostname");
     set_task(0.000001, "Task_PluginCfg");
 }

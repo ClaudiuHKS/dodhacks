@@ -14,6 +14,8 @@
 #include <entity_state.h>
 #include <Memory.h>
 
+#define DOD_HACKS_MIN_CLIENT_S_PTR_TO_EDICT_S_PTR_OFS 16384
+
 #define DOD_BAR   ( 1 << 11 )
 #define DOD_MG42  ( 1 << 17 )
 #define DOD_30CAL ( 1 << 18 )
@@ -48,6 +50,7 @@ enum DoD_Sig : unsigned char
 
     Engine_CalcPing_New,
     Engine_CalcPing_Old,
+    Engine_CalcPing_Re,
 
     PatchFg42,
     PatchEnfield,
@@ -153,6 +156,10 @@ typedef void(__thiscall* DoD_WpnBoxActivateThink_Type) (::size_t CWeaponBox);
 typedef void(__thiscall* DoD_ChangePlayerTeam_Type) (::size_t CDoDTeamPlay, ::size_t CBasePlayer, int Team, int Kill, int Gib);
 typedef void(__thiscall* DoD_ChooseRandomClass_Type) (::size_t CDoDTeamPlay, ::size_t CBasePlayer);
 
+#ifndef __linux__ /// Win. ReHLDS wrapper.
+typedef int(__thiscall* DoD_Engine_CalcPing_Type_ReHLDS_Win) (::size_t client_s);
+#endif
+
 typedef ::size_t(*DoD_Create_Type) (char* pItem, const ::Vector* pOrigin, const ::Vector* pAngles, ::edict_s* pOwner);
 typedef ::size_t(*DoD_InstallGameRules_Type) ();
 typedef void (*DoD_UtilRemove_Type) (::size_t CBaseEntity);
@@ -195,6 +202,10 @@ extern ::enginefuncs_s* g_pengfuncsTable_Post;
 extern ::NEW_DLL_FUNCTIONS* g_pNewFunctionsTable;
 extern ::NEW_DLL_FUNCTIONS* g_pNewFunctionsTable_Post;
 
+#ifndef __linux__
+bool g_ReHLDS = false;
+#endif
+
 ::edict_s* g_pEntities = NULL;
 ::size_t g_entvarsOffs = false;
 ::size_t g_CDoDTeamPlay = false;
@@ -228,6 +239,10 @@ extern ::NEW_DLL_FUNCTIONS* g_pNewFunctionsTable_Post;
 ::DoD_Create_Type DoD_Create = NULL;
 ::DoD_Engine_CalcPing_Type DoD_Engine_CalcPing = NULL;
 
+#ifndef __linux__
+::DoD_Engine_CalcPing_Type_ReHLDS_Win DoD_Engine_CalcPing_ReHLDS_Win = NULL;
+#endif
+
 bool g_DoDPlayerSpawn_Hook = false;
 bool g_DoDGiveNamedItem_Hook = false;
 bool g_DoDDropPlayerItem_Hook = false;
@@ -249,7 +264,7 @@ bool g_DoDWpnBoxActivateThink_Hook = false;
 bool g_DoDChangePlayerTeam_Hook = false;
 bool g_DoDChooseRandomClass_Hook = false;
 bool g_DoDCreate_Hook = false;
-bool g_pDoDEngine_CalcPing_Hook = false;
+bool g_DoDEngine_CalcPing_Hook = false;
 
 #ifdef __linux__
 ::subhook_t g_pDoDPlayerSpawn = NULL;
@@ -434,10 +449,10 @@ const char* classNameByClassIndex(int classIndex)
     }
 }
 
-bool edict_s_Ptr_From_client_s_Ptr_Offs(::size_t client_s, ::size_t& Offs)
+bool edict_s_Ptr_From_client_s_Ptr_Offs(::size_t client_s, ::size_t& Offs, ::size_t ofsFrom)
 {
     ::edict_s* pPlayer;
-    ::size_t Iter = false;
+    ::size_t Iter = ofsFrom;
     unsigned char* pAddr = (unsigned char*)client_s, Player, Max = ::gpGlobals->maxClients;
     for (Offs = false; Iter < UINT_MAX; Iter++)
         for (pPlayer = *(::edict_s**)(pAddr + Iter), Player = 1; pPlayer && Player <= Max; Player++)
@@ -2191,20 +2206,62 @@ void CmdStart(::edict_s* pPlayer, ::usercmd_s* pCmd, ::size_t randomSeed)
         return false;
     }
 
+#ifdef __linux__
     if (pRes)
     {
-        if (pParam[3] || false == ::g_pDoDEngine_CalcPing_Hook)
+        if (pParam[3] || false == ::g_DoDEngine_CalcPing_Hook)
             *pRes = ((::DoD_Engine_CalcPing_Type) ::g_pDoDEngine_CalcPing_Addr) (::g_svPlayerEngPtrs[Player]);
         else
             *pRes = ::DoD_Engine_CalcPing(::g_svPlayerEngPtrs[Player]);
     }
     else
     {
-        if (pParam[3] || false == ::g_pDoDEngine_CalcPing_Hook)
+        if (pParam[3] || false == ::g_DoDEngine_CalcPing_Hook)
             ((::DoD_Engine_CalcPing_Type) ::g_pDoDEngine_CalcPing_Addr) (::g_svPlayerEngPtrs[Player]);
         else
             ::DoD_Engine_CalcPing(::g_svPlayerEngPtrs[Player]);
     }
+#else
+    switch (::g_ReHLDS)
+    {
+    case false:
+    {
+        if (pRes)
+        {
+            if (pParam[3] || false == ::g_DoDEngine_CalcPing_Hook)
+                *pRes = ((::DoD_Engine_CalcPing_Type) ::g_pDoDEngine_CalcPing_Addr) (::g_svPlayerEngPtrs[Player]);
+            else
+                *pRes = ::DoD_Engine_CalcPing(::g_svPlayerEngPtrs[Player]);
+        }
+        else
+        {
+            if (pParam[3] || false == ::g_DoDEngine_CalcPing_Hook)
+                ((::DoD_Engine_CalcPing_Type) ::g_pDoDEngine_CalcPing_Addr) (::g_svPlayerEngPtrs[Player]);
+            else
+                ::DoD_Engine_CalcPing(::g_svPlayerEngPtrs[Player]);
+        }
+        break;
+    }
+    default:
+    {
+        if (pRes)
+        {
+            if (pParam[3] || false == ::g_DoDEngine_CalcPing_Hook)
+                *pRes = ((::DoD_Engine_CalcPing_Type_ReHLDS_Win) ::g_pDoDEngine_CalcPing_Addr) (::g_svPlayerEngPtrs[Player]);
+            else
+                *pRes = ::DoD_Engine_CalcPing_ReHLDS_Win(::g_svPlayerEngPtrs[Player]);
+        }
+        else
+        {
+            if (pParam[3] || false == ::g_DoDEngine_CalcPing_Hook)
+                ((::DoD_Engine_CalcPing_Type_ReHLDS_Win) ::g_pDoDEngine_CalcPing_Addr) (::g_svPlayerEngPtrs[Player]);
+            else
+                ::DoD_Engine_CalcPing_ReHLDS_Win(::g_svPlayerEngPtrs[Player]);
+        }
+        break;
+    }
+    }
+#endif
     return true;
 }
 
@@ -3571,7 +3628,16 @@ void CmdStart(::edict_s* pPlayer, ::usercmd_s* pCmd, ::size_t randomSeed)
     case ::DoD_Func::Fn_InstallGameRules: return ::cell(::g_DoDInstallGameRules_Hook ? ::DoD_InstallGameRules : ::g_pDoDInstallGameRules_Addr);
     case ::DoD_Func::Fn_UtilRemove: return ::cell(::g_DoDUtilRemove_Hook ? ::DoD_UtilRemove : ::g_pDoDUtilRemove_Addr);
     case ::DoD_Func::Fn_CreateNamedEntity: return ::cell(::g_DoDCreateNamedEntity_Hook ? ::DoD_CreateNamedEntity : ::g_pDoDCreateNamedEntity_Addr);
-    case ::DoD_Func::Fn_Engine_CalcPing: return ::cell(::g_pDoDEngine_CalcPing_Hook ? ::DoD_Engine_CalcPing : ::g_pDoDEngine_CalcPing_Addr);
+#ifdef __linux__
+    case ::DoD_Func::Fn_Engine_CalcPing: return ::cell(::g_DoDEngine_CalcPing_Hook ? ::DoD_Engine_CalcPing : ::g_pDoDEngine_CalcPing_Addr);
+#else
+    case ::DoD_Func::Fn_Engine_CalcPing:
+    {
+        if (false == ::g_ReHLDS)
+            return ::cell(::g_DoDEngine_CalcPing_Hook ? ::DoD_Engine_CalcPing : ::g_pDoDEngine_CalcPing_Addr);
+        return ::cell(::g_DoDEngine_CalcPing_Hook ? ::DoD_Engine_CalcPing_ReHLDS_Win : ::g_pDoDEngine_CalcPing_Addr);
+    }
+#endif
     }
 
     ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "Invalid function %d!", pParam[1]);
@@ -4413,7 +4479,7 @@ void __fastcall DoD_SetWaveTime_Hook(::size_t CDoDTeamPlay, FASTCALL_PARAM int T
 
 int DoD_Engine_CalcPing_Hook(::size_t client_s)
 {
-    static auto Found = ::edict_s_Ptr_From_client_s_Ptr_Offs(client_s, ::g_engConvOffs);
+    static auto Found = ::edict_s_Ptr_From_client_s_Ptr_Offs(client_s, ::g_engConvOffs, DOD_HACKS_MIN_CLIENT_S_PTR_TO_EDICT_S_PTR_OFS);
     if (false == Found)
     {
         static bool Logged = false;
@@ -4438,6 +4504,36 @@ int DoD_Engine_CalcPing_Hook(::size_t client_s)
     ::g_fn_ExecuteForward(::g_fwEngine_CalcPing_Post, Player, Ping);
     return Ping;
 }
+
+#ifndef __linux__
+int __fastcall DoD_Engine_CalcPing_Hook_ReHLDS_Win(::size_t client_s FASTCALL_PARAM_ALONE)
+{ /// Wrapper for Windows ReHLDS (__thiscall/ __fastcall).
+    static auto Found = ::edict_s_Ptr_From_client_s_Ptr_Offs(client_s, ::g_engConvOffs, DOD_HACKS_MIN_CLIENT_S_PTR_TO_EDICT_S_PTR_OFS);
+    if (false == Found)
+    {
+        static bool Logged = false;
+        if (false == Logged)
+        {
+            ::MF_Log("*** Warning, ::DoD_Engine_CalcPing_Hook() failed to convert ::client_s* to ::edict_s*!"
+                " " "Contact the author to update the module! ***");
+            Logged = true;
+        }
+        return ::DoD_Engine_CalcPing_ReHLDS_Win(client_s);
+    }
+    auto pAddr = (unsigned char*)client_s;
+    auto pPlayer = *(::edict_s**)(pAddr + ::g_engConvOffs);
+    if (!pPlayer)
+        return ::DoD_Engine_CalcPing_ReHLDS_Win(client_s);
+    ::cell Ping = false;
+    auto Player = (unsigned char) ::F_EToI(pPlayer);
+    ::g_svPlayerEngPtrs[Player] = client_s;
+    if (::g_fn_ExecuteForward(::g_fwEngine_CalcPing, Player, &Ping))
+        return Ping;
+    Ping = ::DoD_Engine_CalcPing_ReHLDS_Win(client_s);
+    ::g_fn_ExecuteForward(::g_fwEngine_CalcPing_Post, Player, Ping);
+    return Ping;
+}
+#endif
 
 ::AMX_NATIVE_INFO DoDHacks_Natives[] =
 {
@@ -4669,7 +4765,20 @@ void OnAmxxAttach()
                     ::g_pDoDEngine_CalcPing_Addr = (void*) ::GetProcAddress(pDoD, ::g_Sigs[::DoD_Sig::Engine_CalcPing_Old].Symbol.c_str());
 
                 if (!::g_pDoDEngine_CalcPing_Addr)
-                    ::MF_Log("::DoD_Engine_CalcPing symbol/ signature not found!");
+                {
+                    if (::g_Sigs[::DoD_Sig::Engine_CalcPing_Re].IsSymbol == false)
+                    {
+                        if (::findInMemory((unsigned char*)pDosHdr, pNtHdr->OptionalHeader.SizeOfImage, ::g_Sigs[::DoD_Sig::Engine_CalcPing_Re].Signature, &Addr, true))
+                            ::g_pDoDEngine_CalcPing_Addr = (void*)Addr;
+                    }
+                    else
+                        ::g_pDoDEngine_CalcPing_Addr = (void*) ::GetProcAddress(pDoD, ::g_Sigs[::DoD_Sig::Engine_CalcPing_Re].Symbol.c_str());
+
+                    if (!::g_pDoDEngine_CalcPing_Addr)
+                        ::MF_Log("::DoD_Engine_CalcPing symbol/ signature not found!");
+                    else
+                        ::g_ReHLDS = true;
+                }
             }
         }
         if (Opened)
@@ -4962,7 +5071,15 @@ void OnAmxxAttach()
                     ::g_pDoDEngine_CalcPing_Addr = (void*)Addr;
 
                 if (!::g_pDoDEngine_CalcPing_Addr)
-                    ::MF_Log("::DoD_Engine_CalcPing symbol/ signature not found!");
+                {
+                    if (::g_Sigs[::DoD_Sig::Engine_CalcPing_Re].IsSymbol)
+                        ::g_pDoDEngine_CalcPing_Addr = ::dlsymComplex(pDoD, ::g_Sigs[::DoD_Sig::Engine_CalcPing_Re].Symbol.c_str());
+                    else if (::findInMemory((unsigned char*)pLinkMap->l_addr, memData.st_size, ::g_Sigs[::DoD_Sig::Engine_CalcPing_Re].Signature, &Addr, true))
+                        ::g_pDoDEngine_CalcPing_Addr = (void*)Addr;
+
+                    if (!::g_pDoDEngine_CalcPing_Addr)
+                        ::MF_Log("::DoD_Engine_CalcPing symbol/ signature not found!");
+                }
             }
         }
         ::dlclose(pDoD);
@@ -5390,13 +5507,16 @@ void OnAmxxDetach()
         ::DetourTransactionCommit();
         ::g_DoDInstallGameRules_Hook = false;
     }
-    if (::g_pDoDEngine_CalcPing_Hook)
+    if (::g_DoDEngine_CalcPing_Hook)
     {
         ::DetourTransactionBegin();
         ::DetourUpdateThread(::GetCurrentThread());
-        ::DetourDetach(&(void*&) ::DoD_Engine_CalcPing, ::DoD_Engine_CalcPing_Hook);
+        if (::g_ReHLDS)
+            ::DetourDetach(&(void*&) ::DoD_Engine_CalcPing_ReHLDS_Win, ::DoD_Engine_CalcPing_Hook_ReHLDS_Win);
+        else
+            ::DetourDetach(&(void*&) ::DoD_Engine_CalcPing, ::DoD_Engine_CalcPing_Hook);
         ::DetourTransactionCommit();
-        ::g_pDoDEngine_CalcPing_Hook = false;
+        ::g_DoDEngine_CalcPing_Hook = false;
     }
     if (::g_DoDUtilRemove_Hook)
     {
@@ -5545,11 +5665,11 @@ void OnAmxxDetach()
         ::subhook_free(::g_pDoDInstallGameRules);
         ::g_DoDInstallGameRules_Hook = false;
     }
-    if (::g_pDoDEngine_CalcPing_Hook)
+    if (::g_DoDEngine_CalcPing_Hook)
     {
         ::subhook_remove(::g_pDoDEngine_CalcPing);
         ::subhook_free(::g_pDoDEngine_CalcPing);
-        ::g_pDoDEngine_CalcPing_Hook = false;
+        ::g_DoDEngine_CalcPing_Hook = false;
     }
     if (::g_DoDDestroyItem_Hook)
     {
@@ -5932,16 +6052,22 @@ void OnPluginsLoaded()
             ::g_DoDCreateNamedEntity_Hook = true;
         }
 
-        if (::g_pDoDEngine_CalcPing_Addr && false == ::g_pDoDEngine_CalcPing_Hook &&
+        if (::g_pDoDEngine_CalcPing_Addr && false == ::g_DoDEngine_CalcPing_Hook &&
             (::g_fn_AmxFindPublic(pAmx, "DoD_OnEngine_CalcPing", &Func) == ::AMX_ERR_NONE ||
                 ::g_fn_AmxFindPublic(pAmx, "DoD_OnEngine_CalcPing_Post", &Func) == ::AMX_ERR_NONE))
         {
-            ::DoD_Engine_CalcPing = (::DoD_Engine_CalcPing_Type) ::g_pDoDEngine_CalcPing_Addr;
+            if (::g_ReHLDS)
+                ::DoD_Engine_CalcPing_ReHLDS_Win = (::DoD_Engine_CalcPing_Type_ReHLDS_Win) ::g_pDoDEngine_CalcPing_Addr;
+            else
+                ::DoD_Engine_CalcPing = (::DoD_Engine_CalcPing_Type) ::g_pDoDEngine_CalcPing_Addr;
             ::DetourTransactionBegin();
             ::DetourUpdateThread(::GetCurrentThread());
-            ::DetourAttach(&(void*&) ::DoD_Engine_CalcPing, ::DoD_Engine_CalcPing_Hook);
+            if (::g_ReHLDS)
+                ::DetourAttach(&(void*&) ::DoD_Engine_CalcPing_ReHLDS_Win, ::DoD_Engine_CalcPing_Hook_ReHLDS_Win);
+            else
+                ::DetourAttach(&(void*&) ::DoD_Engine_CalcPing, ::DoD_Engine_CalcPing_Hook);
             ::DetourTransactionCommit();
-            ::g_pDoDEngine_CalcPing_Hook = true;
+            ::g_DoDEngine_CalcPing_Hook = true;
         }
 
         if (::g_pDoDDestroyItem_Addr && false == ::g_DoDDestroyItem_Hook &&
@@ -6146,14 +6272,14 @@ void OnPluginsLoaded()
             ::g_DoDCreateNamedEntity_Hook = true;
         }
 
-        if (::g_pDoDEngine_CalcPing_Addr && false == ::g_pDoDEngine_CalcPing_Hook &&
+        if (::g_pDoDEngine_CalcPing_Addr && false == ::g_DoDEngine_CalcPing_Hook &&
             (::g_fn_AmxFindPublic(pAmx, "DoD_OnEngine_CalcPing", &Func) == ::AMX_ERR_NONE ||
                 ::g_fn_AmxFindPublic(pAmx, "DoD_OnEngine_CalcPing_Post", &Func) == ::AMX_ERR_NONE))
         {
             ::g_pDoDEngine_CalcPing = ::subhook_new(::g_pDoDEngine_CalcPing_Addr, ::DoD_Engine_CalcPing_Hook, ::SUBHOOK_TRAMPOLINE);
             ::subhook_install(::g_pDoDEngine_CalcPing);
             ::DoD_Engine_CalcPing = (::DoD_Engine_CalcPing_Type) ::subhook_get_trampoline(::g_pDoDEngine_CalcPing);
-            ::g_pDoDEngine_CalcPing_Hook = true;
+            ::g_DoDEngine_CalcPing_Hook = true;
         }
 
         if (::g_pDoDDestroyItem_Addr && false == ::g_DoDDestroyItem_Hook &&
@@ -6282,13 +6408,16 @@ void OnPluginsUnloaded()
         ::DetourTransactionCommit();
         ::g_DoDCreateNamedEntity_Hook = false;
     }
-    if (::g_pDoDEngine_CalcPing_Hook)
+    if (::g_DoDEngine_CalcPing_Hook)
     {
         ::DetourTransactionBegin();
         ::DetourUpdateThread(::GetCurrentThread());
-        ::DetourDetach(&(void*&) ::DoD_Engine_CalcPing, ::DoD_Engine_CalcPing_Hook);
+        if (::g_ReHLDS)
+            ::DetourDetach(&(void*&) ::DoD_Engine_CalcPing_ReHLDS_Win, ::DoD_Engine_CalcPing_Hook_ReHLDS_Win);
+        else
+            ::DetourDetach(&(void*&) ::DoD_Engine_CalcPing, ::DoD_Engine_CalcPing_Hook);
         ::DetourTransactionCommit();
-        ::g_pDoDEngine_CalcPing_Hook = false;
+        ::g_DoDEngine_CalcPing_Hook = false;
     }
     if (::g_DoDSubRemove_Hook)
     {
@@ -6475,11 +6604,11 @@ void OnPluginsUnloaded()
         ::subhook_free(::g_pDoDCreateNamedEntity);
         ::g_DoDCreateNamedEntity_Hook = false;
     }
-    if (::g_pDoDEngine_CalcPing_Hook)
+    if (::g_DoDEngine_CalcPing_Hook)
     {
         ::subhook_remove(::g_pDoDEngine_CalcPing);
         ::subhook_free(::g_pDoDEngine_CalcPing);
-        ::g_pDoDEngine_CalcPing_Hook = false;
+        ::g_DoDEngine_CalcPing_Hook = false;
     }
 #endif
 }

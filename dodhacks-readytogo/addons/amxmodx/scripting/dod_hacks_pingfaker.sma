@@ -21,7 +21,7 @@ new Float: g_fakePlayerPingTime[33];
 
 public plugin_init()
 {
-    register_plugin("DoD Hacks: Ping Faker", "1.0.0.4", "claudiuhks (Hattrick HKS)");
+    register_plugin("DoD Hacks: Ping Faker", "1.0.0.5", "claudiuhks (Hattrick HKS)");
 
     new Buffer[256];
     get_configsdir(Buffer, charsmax(Buffer));

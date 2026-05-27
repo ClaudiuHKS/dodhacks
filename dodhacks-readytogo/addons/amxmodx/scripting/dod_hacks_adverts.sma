@@ -29,7 +29,7 @@ new Array: g_arrayMsgFlags;
 
 public plugin_init()
 {
-    register_plugin("DoD Hacks: Adverts", "1.0.0.4", "Hattrick HKS (claudiuhks)");
+    register_plugin("DoD Hacks: Adverts", "1.0.0.5", "Hattrick HKS (claudiuhks)");
 
     get_configsdir(g_Buffer, charsmax(g_Buffer));
     add(g_Buffer, charsmax(g_Buffer), "/dod_hacks_adverts.ini");

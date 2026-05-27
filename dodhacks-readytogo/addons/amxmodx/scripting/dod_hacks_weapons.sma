@@ -83,7 +83,7 @@ new g_FlagHandGuns; /// Admin access required for receiving hand gun ammo during
 
 public plugin_init()
 {
-    register_plugin("DoD Hacks: Weapons", "1.0.0.4", "Hattrick HKS (claudiuhks)");
+    register_plugin("DoD Hacks: Weapons", "1.0.0.5", "Hattrick HKS (claudiuhks)");
 
     get_configsdir(g_Buffer, charsmax(g_Buffer));
     add(g_Buffer, charsmax(g_Buffer), "/dod_hacks_weapons.ini");

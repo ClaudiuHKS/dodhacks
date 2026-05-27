@@ -7,7 +7,7 @@ new bool: g_Fake[33];
 new bool: g_inServer[33];
 
 public plugin_init()
-    register_plugin("DoD Hacks: Killer", "1.0.0.4", "Hattrick HKS (claudiuhks)");
+    register_plugin("DoD Hacks: Killer", "1.0.0.5", "Hattrick HKS (claudiuhks)");
 
 #if !defined client_disconnected
 #define DOD_ON_PLAYER_DISCONNECTED client_disconnect(Player) /** Old AMX Mod X versions. */
