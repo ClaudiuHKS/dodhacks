@@ -3,6 +3,7 @@
 #include <amxmisc>
 #include <fakemeta>
 #include <hamsandwich>
+#include <dodhacks>
 
 new g_Sync;
 new g_MaxPlayers;

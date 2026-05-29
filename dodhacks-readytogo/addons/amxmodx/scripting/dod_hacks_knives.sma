@@ -199,12 +199,8 @@ public DOD_ON_PLAYER_DISCONNECTED
 
 public OnPlayer_Killed_Post(Player)
 {
-    static Iter;
     g_canPlayerThrow[Player] = false;
     g_isPlayerAwaiting[Player] = false;
-    for (Iter = 0; Iter < 32; Iter++)
-        if (get_pdata_int(Player, 281 + Iter) > 0)
-            server_print("!!! Player ammo on death > 0 @ cell %d!", Iter);
 }
 
 public OnRemoveEntity_Post(Entity)
