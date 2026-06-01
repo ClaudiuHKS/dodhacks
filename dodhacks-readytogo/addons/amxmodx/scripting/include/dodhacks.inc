@@ -60,6 +60,13 @@ enum DoD_FuncIndex
     /// Engine, __cdecl
     ///
     DoD_FI_Engine_CalcPing,
+    DoD_FI_Engine_HostPing,
+    DoD_FI_Engine_Status,
+
+    /// Linux Only (Engine, __cdecl)
+    ///
+    DoD_FI_Engine_WriteByte,
+    DoD_FI_Engine_WriteBits,
 };
 
 /**
@@ -256,6 +263,82 @@ forward DoD_OnEngine_CalcPing(Player, &Ping);
  * show it to others.
  */
 forward DoD_OnEngine_CalcPing_Post(Player, Ping);
+
+/**
+ * Someone (a player
+ * or server itself)
+ * types "ping" con.
+ * cmd.
+ */
+forward DoD_OnEngine_HostPing();
+
+/**
+ * Someone (a player
+ * or server itself)
+ * typed "ping" con.
+ * cmd.
+ */
+forward DoD_OnEngine_HostPing_Post();
+
+/**
+ * Someone (a player
+ * or server itself)
+ * types "status" con.
+ * cmd.
+ */
+forward DoD_OnEngine_HostStatus();
+
+/**
+ * Someone (a player
+ * or server itself)
+ * typed "status" con.
+ * cmd.
+ */
+forward DoD_OnEngine_HostStatus_Post();
+
+/**
+ * Linux only.
+ * Engine writes a byte.
+ */
+forward DoD_OnEngine_WriteByte(DoD_Address: Msg, &Byte);
+
+/**
+ * Linux only.
+ * Engine written a byte.
+ */
+forward DoD_OnEngine_WriteByte_Post(DoD_Address: Msg, Byte);
+
+/**
+ * Linux only.
+ * Engine writes bits.
+ * Only Data up to
+ * 2147483647
+ * is caught here.
+ * If engine sends a
+ * msg. having Data
+ * any higher than
+ * 2147483647,
+ * it will execute
+ * without plugin
+ * being notified.
+ */
+forward DoD_OnEngine_WriteBits(&Data, &Bits);
+
+/**
+ * Linux only.
+ * Engine written bits.
+ * Only Data up to
+ * 2147483647
+ * is caught here.
+ * If engine sends a
+ * msg. having Data
+ * any higher than
+ * 2147483647,
+ * it will execute
+ * without plugin
+ * being notified.
+ */
+forward DoD_OnEngine_WriteBits_Post(Data, Bits);
 
 /**
  * Item is being
@@ -782,6 +865,32 @@ native bool: DoD_ChooseRandomClass(Player, &Res, bool: Update, bool: Loud, bool:
  * to -1.
  */
 native bool: DoD_Engine_CalcPing(Player, &Ping, bool: ExecHooks = false);
+
+/**
+ * Calls "Host_Ping_f()" func.
+ * Returns true.
+ */
+native bool: DoD_Engine_HostPing(bool: ExecHooks = false);
+
+/**
+ * Calls "Host_Status_f()" func.
+ * Returns true.
+ */
+native bool: DoD_Engine_HostStatus(bool: ExecHooks = false);
+
+/**
+ * Linux only.
+ * Calls "MSG_WriteByte()" func.
+ * Returns true.
+ */
+native bool: DoD_Engine_WriteByte(DoD_Address: Msg, Byte, bool: ExecHooks = false);
+
+/**
+ * Linux only.
+ * Calls "MSG_WriteBits()" func.
+ * Returns true.
+ */
+native bool: DoD_Engine_WriteBits(Data, Bits, bool: ExecHooks = false);
 
 /**
  * Adds Health HP to player if needed.

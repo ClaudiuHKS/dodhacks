@@ -3,25 +3,31 @@
 #include <amxmisc>
 #include <dodhacks>
 
+#if !defined SVC_PINGS
+#define      SVC_PINGS 17
+#endif
+
 new g_maxPlayers;
+new g_enginePingPlayerIndex;
 new g_minFakePlayerBasePing;
 new g_maxFakePlayerBasePing;
 new g_maxFakePlayerBasePingDeletion;
 new g_maxFakePlayerBasePingAddition;
 new g_maxRealPlayerPing;
 new g_maxRealPlayerPingDeletion;
+new g_realPlayerPing[33];
 new g_fakePlayerPing[33];
 new g_fakePlayerBasePing[33];
-new g_realPlayerPing[33];
 new bool: g_isPlayerFake[33];
-new bool: g_isPlayerInServer[33];
+new bool: g_inConsoleCommand = false;
+new bool: g_inEnginePingMessage = false;
 new Float: g_pingUpdateInterval;
 new Float: g_realPlayerPingTime[33];
 new Float: g_fakePlayerPingTime[33];
 
 public plugin_init()
 {
-    register_plugin("DoD Hacks: Ping Faker", "1.0.0.5", "claudiuhks (Hattrick HKS)");
+    register_plugin("DoD Hacks: Ping Faker", "1.0.0.6", "claudiuhks (Hattrick HKS)");
 
     new Buffer[256];
     get_configsdir(Buffer, charsmax(Buffer));
@@ -63,31 +69,13 @@ public plugin_init()
     return PLUGIN_CONTINUE;
 }
 
-#if !defined client_disconnected
-#define DOD_ON_PLAYER_DISCONNECTED client_disconnect(Player) /** Old AMX Mod X versions. */
-#else
-#define DOD_ON_PLAYER_DISCONNECTED client_disconnected(Player, bool: Drop, Msg[], Size) /** New AMX Mod X versions. */
-#endif
-
-public DOD_ON_PLAYER_DISCONNECTED
+public client_connect(Player)
 {
-    g_isPlayerFake[Player] = false;
-    g_isPlayerInServer[Player] = false;
-    g_fakePlayerPing[Player] = 0;
-    g_realPlayerPing[Player] = 0;
-    g_fakePlayerBasePing[Player] = 0;
-    g_realPlayerPingTime[Player] = 0.0;
-    g_fakePlayerPingTime[Player] = 0.0;
-}
-
-public client_putinserver(Player)
-{
-    g_isPlayerInServer[Player] = true;
-    g_isPlayerFake[Player]     = bool: is_user_bot(Player);
+    g_isPlayerFake[Player]           = bool: is_user_bot(Player);
     if (g_isPlayerFake[Player])
     {
         g_fakePlayerPingTime[Player] = get_gametime();
-        g_fakePlayerBasePing[Player] = random_num(g_minFakePlayerBasePing, g_maxFakePlayerBasePing);
+        g_fakePlayerBasePing[Player] = random_num(g_minFakePlayerBasePing,       g_maxFakePlayerBasePing);
         g_fakePlayerPing[Player]     = random_num(g_fakePlayerBasePing[Player] - g_maxFakePlayerBasePingDeletion,
                                                   g_fakePlayerBasePing[Player] + g_maxFakePlayerBasePingAddition);
     }
@@ -103,36 +91,78 @@ public Task_UpdateFakePings()
     static Player, Float: Time;
     Time = get_gametime();
     for (Player = 1; Player <= g_maxPlayers; Player++)
-        if (g_isPlayerInServer[Player])
-            switch (g_isPlayerFake[Player])
-            {
-                case false:
-                    if (Time - g_realPlayerPingTime[Player] >= g_pingUpdateInterval)
-                    {
-                        g_realPlayerPingTime[Player] = Time;
-                        g_realPlayerPing[Player]     = random_num(g_maxRealPlayerPing - g_maxRealPlayerPingDeletion, g_maxRealPlayerPing);
-                    }
-                default:
-                    if (Time - g_fakePlayerPingTime[Player] >= g_pingUpdateInterval)
-                    {
-                        g_fakePlayerPingTime[Player] = Time;
-                        g_fakePlayerPing[Player]     = random_num(g_fakePlayerBasePing[Player] - g_maxFakePlayerBasePingDeletion,
-                                                                  g_fakePlayerBasePing[Player] + g_maxFakePlayerBasePingAddition);
-                    }
-            }
+        switch (g_isPlayerFake[Player])
+        {
+            case false:
+                if (Time - g_realPlayerPingTime[Player] >= g_pingUpdateInterval)
+                {
+                    g_realPlayerPingTime[Player] = Time;
+                    g_realPlayerPing[Player]     = random_num(g_maxRealPlayerPing - g_maxRealPlayerPingDeletion, g_maxRealPlayerPing);
+                }
+            default:
+                if (Time - g_fakePlayerPingTime[Player] >= g_pingUpdateInterval)
+                {
+                    g_fakePlayerPingTime[Player] = Time;
+                    g_fakePlayerPing[Player]     = random_num(g_fakePlayerBasePing[Player] - g_maxFakePlayerBasePingDeletion,
+                                                              g_fakePlayerBasePing[Player] + g_maxFakePlayerBasePingAddition);
+                }
+        }
 }
+
+public DoD_OnEngine_HostPing()
+    g_inConsoleCommand = true;
+
+public DoD_OnEngine_HostPing_Post()
+    g_inConsoleCommand = false;
+
+public DoD_OnEngine_HostStatus()
+    g_inConsoleCommand = true;
+
+public DoD_OnEngine_HostStatus_Post()
+    g_inConsoleCommand = false;
 
 public DoD_OnEngine_CalcPing(Player, &Ping)
 {
-    if (!g_isPlayerInServer[Player])
-        return PLUGIN_CONTINUE;
     if (g_isPlayerFake[Player])
-        Ping = g_fakePlayerPing[Player];  /// Skips original game engine call.
+    {
+        if (g_inConsoleCommand) /// "ping" and "status" con. cmds. need an insta. ping refresh.
+            Ping = random_num(g_fakePlayerBasePing[Player] - g_maxFakePlayerBasePingDeletion,
+                              g_fakePlayerBasePing[Player] + g_maxFakePlayerBasePingAddition); /// Skips original game engine call.
+        else
+            Ping = g_fakePlayerPing[Player]; /// Skips original game engine call.
+    }
     else
     {
         DoD_Engine_CalcPing(Player, Ping); /// Calls original game engine call.
         if (Ping > g_maxRealPlayerPing)
-            Ping = g_realPlayerPing[Player];
+        {
+            if (g_inConsoleCommand) /// "ping" and "status" con. cmds. need an insta. ping refresh.
+                Ping = random_num(g_maxRealPlayerPing - g_maxRealPlayerPingDeletion, g_maxRealPlayerPing);
+            else
+                Ping = g_realPlayerPing[Player];
+        }
     }
     return PLUGIN_HANDLED;
 }
+
+/**
+ * Linux only (on Windows, code below is not executed, as it's not needed/ hooked).
+ */
+
+public DoD_OnEngine_WriteByte_Post(DoD_Address: Msg, Byte)
+    if (SVC_PINGS == Byte)
+        g_inEnginePingMessage = true;
+    else
+        g_inEnginePingMessage = false;
+
+public DoD_OnEngine_WriteBits(&Data, &Bits)
+    if (g_inEnginePingMessage)
+        switch (Bits)
+        {
+            case 5: g_enginePingPlayerIndex = Data + 1;
+            case 12:
+                if (g_isPlayerFake[g_enginePingPlayerIndex])
+                    Data = g_fakePlayerPing[g_enginePingPlayerIndex];
+                else if (Data > g_maxRealPlayerPing)
+                    Data = g_realPlayerPing[g_enginePingPlayerIndex];
+        }
