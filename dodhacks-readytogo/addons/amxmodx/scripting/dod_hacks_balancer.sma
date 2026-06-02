@@ -15,7 +15,7 @@ new g_multiPlayerTeamLimit;
 
 public plugin_init()
 {
-    register_plugin("DoD Hacks: Balancer", "1.0.0.6", "claudiuhks (Hattrick HKS)");
+    register_plugin("DoD Hacks: Balancer", "1.0.0.7", "claudiuhks (Hattrick HKS)");
 
     new Buffer[256];
     get_configsdir(Buffer, charsmax(Buffer));

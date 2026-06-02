@@ -3,8 +3,8 @@
 #define __MODULECONFIG_H__
 
 #define MODULE_NAME         "DoD Hacks"
-#define MODULE_VERSION      "1.0.0.6"
-#define MODULE_VERSION_MS   1,0,0,6
+#define MODULE_VERSION      "1.0.0.7"
+#define MODULE_VERSION_MS   1,0,0,7
 #define MODULE_YEAR_MS      "2026"
 #define MODULE_AUTHOR       "Hattrick HKS (claudiuhks)"
 #define MODULE_URL          "https://forums.alliedmods.net/"

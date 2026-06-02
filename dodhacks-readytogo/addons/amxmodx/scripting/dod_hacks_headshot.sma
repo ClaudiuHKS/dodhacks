@@ -17,7 +17,7 @@ new Float: g_HorPos;
 
 public plugin_init()
 {
-    register_plugin("DoD Hacks: Head Shot", "1.0.0.6", "Hattrick HKS (claudiuhks)");
+    register_plugin("DoD Hacks: Head Shot", "1.0.0.7", "Hattrick HKS (claudiuhks)");
 
     new Buffer[256];
     get_configsdir(Buffer, charsmax(Buffer));

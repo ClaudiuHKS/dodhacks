@@ -100,7 +100,7 @@ new Handle: g_Sql; /// Threaded database storage. (**)
 
 public plugin_init()
 {
-    register_plugin("DoD Hacks: Nade Manager", "1.0.0.6", "Hattrick HKS (claudiuhks)");
+    register_plugin("DoD Hacks: Nade Manager", "1.0.0.7", "Hattrick HKS (claudiuhks)");
 
     get_configsdir(g_Buffer, charsmax(g_Buffer));
     add(g_Buffer, charsmax(g_Buffer), "/dod_hacks_nademanager.ini");
@@ -111,7 +111,8 @@ public plugin_init()
         return PLUGIN_HANDLED;
     }
 
-    new Key[32], Val[32], Drv[32], Host[32], User[32], Pass[32], Db[32], bool: eraseOnNewRound;
+    new Key[32], Val[32], Drv[32], Host[32], User[32], Pass[32], Db[32], bool: eraseOnNewRound,
+        bool: allowGlow, bool: allowDroppedGlow;
     while (fgets(Config, g_Buffer, charsmax(g_Buffer)) > 0)
     {
         trim(g_Buffer);
@@ -174,6 +175,10 @@ public plugin_init()
             g_hideChatCmd = bool: str_to_num(Val);
         else if (equali(Key, "@force_knife"))
             g_forceKnife = bool: str_to_num(Val);
+        else if (equali(Key, "@allow_glow"))
+            allowGlow = bool: str_to_num(Val);
+        else if (equali(Key, "@allow_dropped_glow"))
+            allowDroppedGlow = bool: str_to_num(Val);
         else if (equali(Key, "@db_driver"))
         {
             copy(Drv, charsmax(Drv), Val);
@@ -259,8 +264,10 @@ public plugin_init()
         set_task(1.0, "Task_RemoveDroppedExploNades", .flags = "b");
     }
     g_maxPlayers = get_maxplayers();
-    DoD_AddExploNadeProjGlow   (      kRenderNormal, kRenderFxGlowShell, { 20, 180, 200 }, 5, SOLID_NOT, true);
-    DoD_AddDroppedExploNadeGlow(true, kRenderNormal, kRenderFxGlowShell, { 20, 200, 40  }, 5, SOLID_NOT, true);
+    if (allowGlow)
+        DoD_AddExploNadeProjGlow   (      kRenderNormal, kRenderFxGlowShell, { 20, 180, 200 }, 5, SOLID_NOT, true);
+    if (allowDroppedGlow)
+        DoD_AddDroppedExploNadeGlow(true, kRenderNormal, kRenderFxGlowShell, { 20, 200, 40  }, 5, SOLID_NOT, true);
     return PLUGIN_CONTINUE;
 }
 

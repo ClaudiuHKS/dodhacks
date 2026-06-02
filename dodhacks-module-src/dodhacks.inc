@@ -62,11 +62,13 @@ enum DoD_FuncIndex
     DoD_FI_Engine_CalcPing,
     DoD_FI_Engine_HostPing,
     DoD_FI_Engine_Status,
+    DoD_FI_Engine_Stat,
 
     /// Linux Only (Engine, __cdecl)
     ///
     DoD_FI_Engine_WriteByte,
     DoD_FI_Engine_WriteBits,
+    DoD_FI_Engine_EmitPings,
 };
 
 /**
@@ -297,6 +299,22 @@ forward DoD_OnEngine_HostStatus();
 forward DoD_OnEngine_HostStatus_Post();
 
 /**
+ * Someone (a player
+ * or server itself)
+ * types "stat" con.
+ * cmd.
+ */
+forward DoD_OnEngine_HostStat();
+
+/**
+ * Someone (a player
+ * or server itself)
+ * typed "stat" con.
+ * cmd.
+ */
+forward DoD_OnEngine_HostStat_Post();
+
+/**
  * Linux only.
  * Engine writes a byte.
  */
@@ -312,7 +330,7 @@ forward DoD_OnEngine_WriteByte_Post(DoD_Address: Msg, Byte);
  * Linux only.
  * Engine writes bits.
  * Only Data up to
- * 2147483647
+ * 2147483647 (incl.)
  * is caught here.
  * If engine sends a
  * msg. having Data
@@ -328,7 +346,7 @@ forward DoD_OnEngine_WriteBits(&Data, &Bits);
  * Linux only.
  * Engine written bits.
  * Only Data up to
- * 2147483647
+ * 2147483647 (incl.)
  * is caught here.
  * If engine sends a
  * msg. having Data
@@ -339,6 +357,20 @@ forward DoD_OnEngine_WriteBits(&Data, &Bits);
  * being notified.
  */
 forward DoD_OnEngine_WriteBits_Post(Data, Bits);
+
+/**
+ * Linux only.
+ * Engine emits
+ * pings.
+ */
+forward DoD_OnEngine_EmitPings(DoD_Address: client_s, DoD_Address: sizebuf_s);
+
+/**
+ * Linux only.
+ * Engine emitted
+ * pings.
+ */
+forward DoD_OnEngine_EmitPings_Post(DoD_Address: client_s, DoD_Address: sizebuf_s);
 
 /**
  * Item is being
@@ -879,6 +911,12 @@ native bool: DoD_Engine_HostPing(bool: ExecHooks = false);
 native bool: DoD_Engine_HostStatus(bool: ExecHooks = false);
 
 /**
+ * Calls "Host_Status_Formatted_f()" func.
+ * Returns true.
+ */
+native bool: DoD_Engine_HostStat(bool: ExecHooks = false);
+
+/**
  * Linux only.
  * Calls "MSG_WriteByte()" func.
  * Returns true.
@@ -891,6 +929,13 @@ native bool: DoD_Engine_WriteByte(DoD_Address: Msg, Byte, bool: ExecHooks = fals
  * Returns true.
  */
 native bool: DoD_Engine_WriteBits(Data, Bits, bool: ExecHooks = false);
+
+/**
+ * Linux only.
+ * Calls "SV_EmitPings()" func.
+ * Returns true.
+ */
+native bool: DoD_Engine_EmitPings(DoD_Address: client_s, DoD_Address: sizebuf_s, bool: ExecHooks = false);
 
 /**
  * Adds Health HP to player if needed.

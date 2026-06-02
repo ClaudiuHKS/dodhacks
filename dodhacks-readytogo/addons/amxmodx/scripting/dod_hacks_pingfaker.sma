@@ -20,6 +20,7 @@ new g_fakePlayerPing[33];
 new g_fakePlayerBasePing[33];
 new bool: g_isPlayerFake[33];
 new bool: g_inConsoleCommand = false;
+new bool: g_inEnginePingFunc = false;
 new bool: g_inEnginePingMessage = false;
 new Float: g_pingUpdateInterval;
 new Float: g_realPlayerPingTime[33];
@@ -27,7 +28,7 @@ new Float: g_fakePlayerPingTime[33];
 
 public plugin_init()
 {
-    register_plugin("DoD Hacks: Ping Faker", "1.0.0.6", "claudiuhks (Hattrick HKS)");
+    register_plugin("DoD Hacks: Ping Faker", "1.0.0.7", "claudiuhks (Hattrick HKS)");
 
     new Buffer[256];
     get_configsdir(Buffer, charsmax(Buffer));
@@ -121,6 +122,12 @@ public DoD_OnEngine_HostStatus()
 public DoD_OnEngine_HostStatus_Post()
     g_inConsoleCommand = false;
 
+public DoD_OnEngine_HostStat()
+    g_inConsoleCommand = true;
+
+public DoD_OnEngine_HostStat_Post()
+    g_inConsoleCommand = false;
+
 public DoD_OnEngine_CalcPing(Player, &Ping)
 {
     if (g_isPlayerFake[Player])
@@ -149,8 +156,14 @@ public DoD_OnEngine_CalcPing(Player, &Ping)
  * Linux only (on Windows, code below is not executed, as it's not needed/ hooked).
  */
 
+public DoD_OnEngine_EmitPings(DoD_Address: client_s, DoD_Address: sizebuf_s)
+    g_inEnginePingFunc = true;
+
+public DoD_OnEngine_EmitPings_Post(DoD_Address: client_s, DoD_Address: sizebuf_s)
+    g_inEnginePingFunc = false;
+
 public DoD_OnEngine_WriteByte_Post(DoD_Address: Msg, Byte)
-    if (SVC_PINGS == Byte)
+    if (g_inEnginePingFunc && SVC_PINGS == Byte)
         g_inEnginePingMessage = true;
     else
         g_inEnginePingMessage = false;

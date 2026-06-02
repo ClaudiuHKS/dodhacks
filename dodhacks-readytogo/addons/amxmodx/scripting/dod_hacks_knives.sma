@@ -48,7 +48,7 @@ new DoD_Address: g_wpnBoxKill = DoD_Address: DoD_Address_Null;
 
 public plugin_init()
 {
-    register_plugin("DoD Hacks: Knives", "1.0.0.6", "Hattrick HKS (claudiuhks)");
+    register_plugin("DoD Hacks: Knives", "1.0.0.7", "Hattrick HKS (claudiuhks)");
 
     new Buffer[256];
     get_configsdir(Buffer, charsmax(Buffer));
@@ -482,8 +482,6 @@ public OnSetModel_Pre(Entity)
                     set_pev(Entity, ThrowingKnives_EntityKeyForFlag, ThrowingKnives_EntityFlagValue);
                     set_pev(Entity, pev_solid, SOLID_BBOX);
                     set_pev(Entity, pev_velocity, Velocity);
-                    set_pev(Entity, pev_mins, Float: { -0.000001, -0.000001, -0.000001 });
-                    set_pev(Entity, pev_maxs, Float: {  0.000001,  0.000001,  0.000001 });
                     engfunc(EngFunc_SetSize, Entity,
                         Float: { -0.000001, -0.000001, -0.000001 }, Float: { 0.000001, 0.000001, 0.000001 });
                 }

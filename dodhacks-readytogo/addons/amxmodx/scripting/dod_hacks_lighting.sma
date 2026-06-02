@@ -12,7 +12,7 @@ new g_Lighting[2] = { '?', EOS };
 
 public plugin_init()
 {
-    register_plugin("DoD Hacks: Lighting", "1.0.0.6", "HKS Hattrick (claudiuhks)");
+    register_plugin("DoD Hacks: Lighting", "1.0.0.7", "HKS Hattrick (claudiuhks)");
 
     new Buffer[256];
     get_configsdir(Buffer, charsmax(Buffer));

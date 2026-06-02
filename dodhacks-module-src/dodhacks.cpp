@@ -64,6 +64,10 @@ enum DoD_Sig : unsigned char
     Engine_HostStatus_Old,
     Engine_HostStatus_Re,
 
+    Engine_HostStat_New,
+    Engine_HostStat_Old,
+    Engine_HostStat_Re,
+
 #ifdef __linux__
     Engine_WriteByte_New,
     Engine_WriteByte_Old,
@@ -72,6 +76,10 @@ enum DoD_Sig : unsigned char
     Engine_WriteBits_New,
     Engine_WriteBits_Old,
     Engine_WriteBits_Re,
+
+    Engine_EmitPings_New,
+    Engine_EmitPings_Old,
+    Engine_EmitPings_Re,
 #endif
 
     /// Misc. Signatures
@@ -143,10 +151,12 @@ enum DoD_Func : unsigned char
     Fn_Engine_CalcPing,
     Fn_Engine_HostPing,
     Fn_Engine_HostStatus,
+    Fn_Engine_HostStat,
 
 #ifdef __linux__
     Fn_Engine_WriteByte,
     Fn_Engine_WriteBits,
+    Fn_Engine_EmitPings,
 #endif
 };
 
@@ -207,10 +217,12 @@ typedef ::edict_s* (*DoD_CreateNamedEntity_Type) (::size_t Name);
 typedef int (*DoD_Engine_CalcPing_Type) (::size_t client_s);
 typedef void (*DoD_Engine_HostPing_Type) ();
 typedef void (*DoD_Engine_HostStatus_Type) ();
+typedef void (*DoD_Engine_HostStat_Type) ();
 
 #ifdef __linux__
 typedef void (*DoD_Engine_WriteByte_Type) (::size_t Message, int Value);
 typedef void (*DoD_Engine_WriteBits_Type) (::size_t Data, int Bits);
+typedef void (*DoD_Engine_EmitPings_Type) (::size_t client_s, ::size_t sizebuf_s);
 #endif
 
 struct AllocatedString
@@ -287,12 +299,14 @@ bool g_ReHLDS = false;
 ::DoD_Engine_CalcPing_Type DoD_Engine_CalcPing = NULL;
 ::DoD_Engine_HostPing_Type DoD_Engine_HostPing = NULL;
 ::DoD_Engine_HostStatus_Type DoD_Engine_HostStatus = NULL;
+::DoD_Engine_HostStat_Type DoD_Engine_HostStat = NULL;
 
 #ifndef __linux__
 ::DoD_Engine_CalcPing_Type_ReHLDS_Win DoD_Engine_CalcPing_ReHLDS_Win = NULL;
 #else
 ::DoD_Engine_WriteByte_Type DoD_Engine_WriteByte = NULL;
 ::DoD_Engine_WriteBits_Type DoD_Engine_WriteBits = NULL;
+::DoD_Engine_EmitPings_Type DoD_Engine_EmitPings = NULL;
 #endif
 
 bool g_DoDPlayerSpawn_Hook = false;
@@ -319,10 +333,12 @@ bool g_DoDCreate_Hook = false;
 bool g_DoDEngine_CalcPing_Hook = false;
 bool g_DoDEngine_HostPing_Hook = false;
 bool g_DoDEngine_HostStatus_Hook = false;
+bool g_DoDEngine_HostStat_Hook = false;
 
 #ifdef __linux__
 bool g_DoDEngine_WriteByte_Hook = false;
 bool g_DoDEngine_WriteBits_Hook = false;
+bool g_DoDEngine_EmitPings_Hook = false;
 #endif
 
 #ifdef __linux__
@@ -350,8 +366,10 @@ bool g_DoDEngine_WriteBits_Hook = false;
 ::subhook_t g_pDoDEngine_CalcPing = NULL;
 ::subhook_t g_pDoDEngine_HostPing = NULL;
 ::subhook_t g_pDoDEngine_HostStatus = NULL;
+::subhook_t g_pDoDEngine_HostStat = NULL;
 ::subhook_t g_pDoDEngine_WriteByte = NULL;
 ::subhook_t g_pDoDEngine_WriteBits = NULL;
+::subhook_t g_pDoDEngine_EmitPings = NULL;
 #endif
 
 void* g_pDoDPlayerSpawn_Addr = NULL;
@@ -378,10 +396,12 @@ void* g_pDoDCreate_Addr = NULL;
 void* g_pDoDEngine_CalcPing_Addr = NULL;
 void* g_pDoDEngine_HostPing_Addr = NULL;
 void* g_pDoDEngine_HostStatus_Addr = NULL;
+void* g_pDoDEngine_HostStat_Addr = NULL;
 
 #ifdef __linux__
 void* g_pDoDEngine_WriteByte_Addr = NULL;
 void* g_pDoDEngine_WriteBits_Addr = NULL;
+void* g_pDoDEngine_EmitPings_Addr = NULL;
 #endif
 
 int g_fwPlayerSpawn = false;
@@ -408,10 +428,12 @@ int g_fwCreate = false;
 int g_fwEngine_CalcPing = false;
 int g_fwEngine_HostPing = false;
 int g_fwEngine_HostStatus = false;
+int g_fwEngine_HostStat = false;
 
 #ifdef __linux__
 int g_fwEngine_WriteByte = false;
 int g_fwEngine_WriteBits = false;
+int g_fwEngine_EmitPings = false;
 #endif
 
 int g_fwPlayerSpawn_Post = false;
@@ -438,10 +460,12 @@ int g_fwCreate_Post = false;
 int g_fwEngine_CalcPing_Post = false;
 int g_fwEngine_HostPing_Post = false;
 int g_fwEngine_HostStatus_Post = false;
+int g_fwEngine_HostStat_Post = false;
 
 #ifdef __linux__
 int g_fwEngine_WriteByte_Post = false;
 int g_fwEngine_WriteBits_Post = false;
+int g_fwEngine_EmitPings_Post = false;
 #endif
 
 unsigned char* g_pAutoScopeFG42Addr = NULL;
@@ -2289,6 +2313,20 @@ void CmdStart(::edict_s* pPlayer, ::usercmd_s* pCmd, ::size_t randomSeed)
     return true;
 }
 
+::cell DoD_Engine_HostStat_Native(::tagAMX* pAmx, ::cell* pParam)
+{
+    if (!::g_pDoDEngine_HostStat_Addr)
+    {
+        ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "Signature for ::DoD_Engine_HostStat not found!");
+        return false;
+    }
+    if (pParam[1] || false == ::g_DoDEngine_HostStat_Hook)
+        ((::DoD_Engine_HostStat_Type) ::g_pDoDEngine_HostStat_Addr) ();
+    else
+        ::DoD_Engine_HostStat();
+    return true;
+}
+
 ::cell DoD_Engine_WriteByte_Native(::tagAMX* pAmx, ::cell* pParam)
 {
 #ifndef __linux__
@@ -2323,6 +2361,25 @@ void CmdStart(::edict_s* pPlayer, ::usercmd_s* pCmd, ::size_t randomSeed)
         ((::DoD_Engine_WriteBits_Type) ::g_pDoDEngine_WriteBits_Addr) (pParam[1], pParam[2]);
     else
         ::DoD_Engine_WriteBits(pParam[1], pParam[2]);
+    return true;
+#endif
+}
+
+::cell DoD_Engine_EmitPings_Native(::tagAMX* pAmx, ::cell* pParam)
+{
+#ifndef __linux__
+    ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "DoD_Engine_EmitPings() native not implemented on Windows!");
+    return false;
+#else
+    if (!::g_pDoDEngine_EmitPings_Addr)
+    {
+        ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "Signature for ::DoD_Engine_EmitPings not found!");
+        return false;
+    }
+    if (pParam[3] || false == ::g_DoDEngine_EmitPings_Hook)
+        ((::DoD_Engine_EmitPings_Type) ::g_pDoDEngine_EmitPings_Addr) (pParam[1], pParam[2]);
+    else
+        ::DoD_Engine_EmitPings(pParam[1], pParam[2]);
     return true;
 #endif
 }
@@ -3754,10 +3811,12 @@ void CmdStart(::edict_s* pPlayer, ::usercmd_s* pCmd, ::size_t randomSeed)
         case ::DoD_Func::Fn_Engine_CalcPing: return (::cell) ::g_pDoDEngine_CalcPing_Addr;
         case ::DoD_Func::Fn_Engine_HostPing: return (::cell) ::g_pDoDEngine_HostPing_Addr;
         case ::DoD_Func::Fn_Engine_HostStatus: return (::cell) ::g_pDoDEngine_HostStatus_Addr;
+        case ::DoD_Func::Fn_Engine_HostStat: return (::cell) ::g_pDoDEngine_HostStat_Addr;
 
 #ifdef __linux__
         case ::DoD_Func::Fn_Engine_WriteByte: return (::cell) ::g_pDoDEngine_WriteByte_Addr;
         case ::DoD_Func::Fn_Engine_WriteBits: return (::cell) ::g_pDoDEngine_WriteBits_Addr;
+        case ::DoD_Func::Fn_Engine_EmitPings: return (::cell) ::g_pDoDEngine_EmitPings_Addr;
 #endif
         }
     }
@@ -3789,6 +3848,7 @@ void CmdStart(::edict_s* pPlayer, ::usercmd_s* pCmd, ::size_t randomSeed)
     case ::DoD_Func::Fn_Engine_CalcPing: return ::cell(::g_DoDEngine_CalcPing_Hook ? ::DoD_Engine_CalcPing : ::g_pDoDEngine_CalcPing_Addr);
     case ::DoD_Func::Fn_Engine_WriteByte: return ::cell(::g_DoDEngine_WriteByte_Hook ? ::DoD_Engine_WriteByte : ::g_pDoDEngine_WriteByte_Addr);
     case ::DoD_Func::Fn_Engine_WriteBits: return ::cell(::g_DoDEngine_WriteBits_Hook ? ::DoD_Engine_WriteBits : ::g_pDoDEngine_WriteBits_Addr);
+    case ::DoD_Func::Fn_Engine_EmitPings: return ::cell(::g_DoDEngine_EmitPings_Hook ? ::DoD_Engine_EmitPings : ::g_pDoDEngine_EmitPings_Addr);
 #else
     case ::DoD_Func::Fn_Engine_CalcPing:
     {
@@ -3799,6 +3859,7 @@ void CmdStart(::edict_s* pPlayer, ::usercmd_s* pCmd, ::size_t randomSeed)
 #endif
     case ::DoD_Func::Fn_Engine_HostPing: return ::cell(::g_DoDEngine_HostPing_Hook ? ::DoD_Engine_HostPing : ::g_pDoDEngine_HostPing_Addr);
     case ::DoD_Func::Fn_Engine_HostStatus: return ::cell(::g_DoDEngine_HostStatus_Hook ? ::DoD_Engine_HostStatus : ::g_pDoDEngine_HostStatus_Addr);
+    case ::DoD_Func::Fn_Engine_HostStat: return ::cell(::g_DoDEngine_HostStat_Hook ? ::DoD_Engine_HostStat : ::g_pDoDEngine_HostStat_Addr);
     }
 
     ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "Invalid function %d!", pParam[1]);
@@ -4716,6 +4777,14 @@ void DoD_Engine_HostStatus_Hook()
     ::g_fn_ExecuteForward(::g_fwEngine_HostStatus_Post);
 }
 
+void DoD_Engine_HostStat_Hook()
+{
+    if (::g_fn_ExecuteForward(::g_fwEngine_HostStat))
+        return;
+    ::DoD_Engine_HostStat();
+    ::g_fn_ExecuteForward(::g_fwEngine_HostStat_Post);
+}
+
 #ifdef __linux__
 void DoD_Engine_WriteByte_Hook(::size_t Message, int Value)
 {
@@ -4738,6 +4807,14 @@ void DoD_Engine_WriteBits_Hook(::size_t Data, int Bits)
         return;
     ::DoD_Engine_WriteBits((::size_t)(newData), newBits);
     ::g_fn_ExecuteForward(::g_fwEngine_WriteBits_Post, newData, newBits);
+}
+
+void DoD_Engine_EmitPings_Hook(::size_t client_s, ::size_t sizebuf_s)
+{
+    if (::g_fn_ExecuteForward(::g_fwEngine_EmitPings, ::cell(client_s), ::cell(sizebuf_s)))
+        return;
+    ::DoD_Engine_EmitPings(client_s, sizebuf_s);
+    ::g_fn_ExecuteForward(::g_fwEngine_EmitPings_Post, ::cell(client_s), ::cell(sizebuf_s));
 }
 #endif
 
@@ -4766,8 +4843,10 @@ void DoD_Engine_WriteBits_Hook(::size_t Data, int Bits)
     { "DoD_Engine_CalcPing", ::DoD_Engine_CalcPing_Native, },
     { "DoD_Engine_HostPing", ::DoD_Engine_HostPing_Native, },
     { "DoD_Engine_HostStatus", ::DoD_Engine_HostStatus_Native, },
+    { "DoD_Engine_HostStat", ::DoD_Engine_HostStat_Native, },
     { "DoD_Engine_WriteByte", ::DoD_Engine_WriteByte_Native, },
     { "DoD_Engine_WriteBits", ::DoD_Engine_WriteBits_Native, },
+    { "DoD_Engine_EmitPings", ::DoD_Engine_EmitPings_Native, },
 
     { "DoD_SetEntityThinkFunc", ::DoD_SetEntityThinkFunc_Native, },
     { "DoD_GetEntityThinkFunc", ::DoD_GetEntityThinkFunc_Native, },
@@ -5056,6 +5135,41 @@ void OnAmxxAttach()
 
                     if (!::g_pDoDEngine_HostStatus_Addr)
                         ::MF_Log("::DoD_Engine_HostStatus symbol/ signature not found!");
+                    else
+                        ::g_ReHLDS = true;
+                }
+            }
+
+            if (::g_Sigs[::DoD_Sig::Engine_HostStat_New].IsSymbol == false)
+            {
+                if (::findInMemory((unsigned char*)pDosHdr, pNtHdr->OptionalHeader.SizeOfImage, ::g_Sigs[::DoD_Sig::Engine_HostStat_New].Signature, &Addr, true))
+                    ::g_pDoDEngine_HostStat_Addr = (void*)Addr;
+            }
+            else
+                ::g_pDoDEngine_HostStat_Addr = (void*) ::GetProcAddress(pDoD, ::g_Sigs[::DoD_Sig::Engine_HostStat_New].Symbol.c_str());
+
+            if (!::g_pDoDEngine_HostStat_Addr)
+            {
+                if (::g_Sigs[::DoD_Sig::Engine_HostStat_Old].IsSymbol == false)
+                {
+                    if (::findInMemory((unsigned char*)pDosHdr, pNtHdr->OptionalHeader.SizeOfImage, ::g_Sigs[::DoD_Sig::Engine_HostStat_Old].Signature, &Addr, true))
+                        ::g_pDoDEngine_HostStat_Addr = (void*)Addr;
+                }
+                else
+                    ::g_pDoDEngine_HostStat_Addr = (void*) ::GetProcAddress(pDoD, ::g_Sigs[::DoD_Sig::Engine_HostStat_Old].Symbol.c_str());
+
+                if (!::g_pDoDEngine_HostStat_Addr)
+                {
+                    if (::g_Sigs[::DoD_Sig::Engine_HostStat_Re].IsSymbol == false)
+                    {
+                        if (::findInMemory((unsigned char*)pDosHdr, pNtHdr->OptionalHeader.SizeOfImage, ::g_Sigs[::DoD_Sig::Engine_HostStat_Re].Signature, &Addr, true))
+                            ::g_pDoDEngine_HostStat_Addr = (void*)Addr;
+                    }
+                    else
+                        ::g_pDoDEngine_HostStat_Addr = (void*) ::GetProcAddress(pDoD, ::g_Sigs[::DoD_Sig::Engine_HostStat_Re].Symbol.c_str());
+
+                    if (!::g_pDoDEngine_HostStat_Addr)
+                        ::MF_Log("::DoD_Engine_HostStat symbol/ signature not found!");
                     else
                         ::g_ReHLDS = true;
                 }
@@ -5410,6 +5524,30 @@ void OnAmxxAttach()
                 }
             }
 
+            if (::g_Sigs[::DoD_Sig::Engine_HostStat_New].IsSymbol)
+                ::g_pDoDEngine_HostStat_Addr = ::dlsymComplex(pDoD, ::g_Sigs[::DoD_Sig::Engine_HostStat_New].Symbol.c_str());
+            else if (::findInMemory((unsigned char*)pLinkMap->l_addr, memData.st_size, ::g_Sigs[::DoD_Sig::Engine_HostStat_New].Signature, &Addr, true))
+                ::g_pDoDEngine_HostStat_Addr = (void*)Addr;
+
+            if (!::g_pDoDEngine_HostStat_Addr)
+            {
+                if (::g_Sigs[::DoD_Sig::Engine_HostStat_Old].IsSymbol)
+                    ::g_pDoDEngine_HostStat_Addr = ::dlsymComplex(pDoD, ::g_Sigs[::DoD_Sig::Engine_HostStat_Old].Symbol.c_str());
+                else if (::findInMemory((unsigned char*)pLinkMap->l_addr, memData.st_size, ::g_Sigs[::DoD_Sig::Engine_HostStat_Old].Signature, &Addr, true))
+                    ::g_pDoDEngine_HostStat_Addr = (void*)Addr;
+
+                if (!::g_pDoDEngine_HostStat_Addr)
+                {
+                    if (::g_Sigs[::DoD_Sig::Engine_HostStat_Re].IsSymbol)
+                        ::g_pDoDEngine_HostStat_Addr = ::dlsymComplex(pDoD, ::g_Sigs[::DoD_Sig::Engine_HostStat_Re].Symbol.c_str());
+                    else if (::findInMemory((unsigned char*)pLinkMap->l_addr, memData.st_size, ::g_Sigs[::DoD_Sig::Engine_HostStat_Re].Signature, &Addr, true))
+                        ::g_pDoDEngine_HostStat_Addr = (void*)Addr;
+
+                    if (!::g_pDoDEngine_HostStat_Addr)
+                        ::MF_Log("::DoD_Engine_HostStat symbol/ signature not found!");
+                }
+            }
+
             if (::g_Sigs[::DoD_Sig::Engine_WriteByte_New].IsSymbol)
                 ::g_pDoDEngine_WriteByte_Addr = ::dlsymComplex(pDoD, ::g_Sigs[::DoD_Sig::Engine_WriteByte_New].Symbol.c_str());
             else if (::findInMemory((unsigned char*)pLinkMap->l_addr, memData.st_size, ::g_Sigs[::DoD_Sig::Engine_WriteByte_New].Signature, &Addr, true))
@@ -5455,6 +5593,30 @@ void OnAmxxAttach()
 
                     if (!::g_pDoDEngine_WriteBits_Addr)
                         ::MF_Log("::DoD_Engine_WriteBits symbol/ signature not found!");
+                }
+            }
+
+            if (::g_Sigs[::DoD_Sig::Engine_EmitPings_New].IsSymbol)
+                ::g_pDoDEngine_EmitPings_Addr = ::dlsymComplex(pDoD, ::g_Sigs[::DoD_Sig::Engine_EmitPings_New].Symbol.c_str());
+            else if (::findInMemory((unsigned char*)pLinkMap->l_addr, memData.st_size, ::g_Sigs[::DoD_Sig::Engine_EmitPings_New].Signature, &Addr, true))
+                ::g_pDoDEngine_EmitPings_Addr = (void*)Addr;
+
+            if (!::g_pDoDEngine_EmitPings_Addr)
+            {
+                if (::g_Sigs[::DoD_Sig::Engine_EmitPings_Old].IsSymbol)
+                    ::g_pDoDEngine_EmitPings_Addr = ::dlsymComplex(pDoD, ::g_Sigs[::DoD_Sig::Engine_EmitPings_Old].Symbol.c_str());
+                else if (::findInMemory((unsigned char*)pLinkMap->l_addr, memData.st_size, ::g_Sigs[::DoD_Sig::Engine_EmitPings_Old].Signature, &Addr, true))
+                    ::g_pDoDEngine_EmitPings_Addr = (void*)Addr;
+
+                if (!::g_pDoDEngine_EmitPings_Addr)
+                {
+                    if (::g_Sigs[::DoD_Sig::Engine_EmitPings_Re].IsSymbol)
+                        ::g_pDoDEngine_EmitPings_Addr = ::dlsymComplex(pDoD, ::g_Sigs[::DoD_Sig::Engine_EmitPings_Re].Symbol.c_str());
+                    else if (::findInMemory((unsigned char*)pLinkMap->l_addr, memData.st_size, ::g_Sigs[::DoD_Sig::Engine_EmitPings_Re].Signature, &Addr, true))
+                        ::g_pDoDEngine_EmitPings_Addr = (void*)Addr;
+
+                    if (!::g_pDoDEngine_EmitPings_Addr)
+                        ::MF_Log("::DoD_Engine_EmitPings symbol/ signature not found!");
                 }
             }
         }
@@ -5910,6 +6072,14 @@ void OnAmxxDetach()
         ::DetourTransactionCommit();
         ::g_DoDEngine_HostStatus_Hook = false;
     }
+    if (::g_DoDEngine_HostStat_Hook)
+    {
+        ::DetourTransactionBegin();
+        ::DetourUpdateThread(::GetCurrentThread());
+        ::DetourDetach(&(void*&) ::DoD_Engine_HostStat, ::DoD_Engine_HostStat_Hook);
+        ::DetourTransactionCommit();
+        ::g_DoDEngine_HostStat_Hook = false;
+    }
     if (::g_DoDUtilRemove_Hook)
     {
         ::DetourTransactionBegin();
@@ -6075,6 +6245,12 @@ void OnAmxxDetach()
         ::subhook_free(::g_pDoDEngine_HostStatus);
         ::g_DoDEngine_HostStatus_Hook = false;
     }
+    if (::g_DoDEngine_HostStat_Hook)
+    {
+        ::subhook_remove(::g_pDoDEngine_HostStat);
+        ::subhook_free(::g_pDoDEngine_HostStat);
+        ::g_DoDEngine_HostStat_Hook = false;
+    }
     if (::g_DoDEngine_WriteByte_Hook)
     {
         ::subhook_remove(::g_pDoDEngine_WriteByte);
@@ -6086,6 +6262,12 @@ void OnAmxxDetach()
         ::subhook_remove(::g_pDoDEngine_WriteBits);
         ::subhook_free(::g_pDoDEngine_WriteBits);
         ::g_DoDEngine_WriteBits_Hook = false;
+    }
+    if (::g_DoDEngine_EmitPings_Hook)
+    {
+        ::subhook_remove(::g_pDoDEngine_EmitPings);
+        ::subhook_free(::g_pDoDEngine_EmitPings);
+        ::g_DoDEngine_EmitPings_Hook = false;
     }
     if (::g_DoDDestroyItem_Hook)
     {
@@ -6185,10 +6367,12 @@ void OnAmxxDetach()
     ::g_pDoDEngine_CalcPing_Addr = NULL;
     ::g_pDoDEngine_HostPing_Addr = NULL;
     ::g_pDoDEngine_HostStatus_Addr = NULL;
+    ::g_pDoDEngine_HostStat_Addr = NULL;
 
 #ifdef __linux__
     ::g_pDoDEngine_WriteByte_Addr = NULL;
     ::g_pDoDEngine_WriteBits_Addr = NULL;
+    ::g_pDoDEngine_EmitPings_Addr = NULL;
 #endif
 
     ::g_Sigs.clear();
@@ -6220,10 +6404,12 @@ void OnPluginsLoaded()
     ::g_fwEngine_CalcPing = ::g_fn_RegisterForward("DoD_OnEngine_CalcPing", ::ET_STOP, ::FP_CELL, ::FP_CELL_BYREF /** can be altered during exec */, ::FP_DONE);
     ::g_fwEngine_HostPing = ::g_fn_RegisterForward("DoD_OnEngine_HostPing", ::ET_STOP, ::FP_DONE);
     ::g_fwEngine_HostStatus = ::g_fn_RegisterForward("DoD_OnEngine_HostStatus", ::ET_STOP, ::FP_DONE);
+    ::g_fwEngine_HostStat = ::g_fn_RegisterForward("DoD_OnEngine_HostStat", ::ET_STOP, ::FP_DONE);
 
 #ifdef __linux__
     ::g_fwEngine_WriteByte = ::g_fn_RegisterForward("DoD_OnEngine_WriteByte", ::ET_STOP, ::FP_CELL, ::FP_CELL_BYREF /** can be altered during exec */, ::FP_DONE);
     ::g_fwEngine_WriteBits = ::g_fn_RegisterForward("DoD_OnEngine_WriteBits", ::ET_STOP, ::FP_CELL_BYREF /** can be altered during exec */, ::FP_CELL_BYREF /** can be altered during exec */, ::FP_DONE);
+    ::g_fwEngine_EmitPings = ::g_fn_RegisterForward("DoD_OnEngine_EmitPings", ::ET_STOP, ::FP_CELL, ::FP_CELL, ::FP_DONE);
 #endif
 
     ::g_fwPlayerSpawn_Post = ::g_fn_RegisterForward("DoD_OnPlayerSpawn_Post", ::ET_IGNORE, ::FP_CELL, ::FP_CELL, ::FP_DONE);
@@ -6250,10 +6436,12 @@ void OnPluginsLoaded()
     ::g_fwEngine_CalcPing_Post = ::g_fn_RegisterForward("DoD_OnEngine_CalcPing_Post", ::ET_IGNORE, ::FP_CELL, ::FP_CELL, ::FP_DONE);
     ::g_fwEngine_HostPing_Post = ::g_fn_RegisterForward("DoD_OnEngine_HostPing_Post", ::ET_IGNORE, ::FP_DONE);
     ::g_fwEngine_HostStatus_Post = ::g_fn_RegisterForward("DoD_OnEngine_HostStatus_Post", ::ET_IGNORE, ::FP_DONE);
+    ::g_fwEngine_HostStat_Post = ::g_fn_RegisterForward("DoD_OnEngine_HostStat_Post", ::ET_IGNORE, ::FP_DONE);
 
 #ifdef __linux__
     ::g_fwEngine_WriteByte_Post = ::g_fn_RegisterForward("DoD_OnEngine_WriteByte_Post", ::ET_IGNORE, ::FP_CELL, ::FP_CELL, ::FP_DONE);
     ::g_fwEngine_WriteBits_Post = ::g_fn_RegisterForward("DoD_OnEngine_WriteBits_Post", ::ET_IGNORE, ::FP_CELL, ::FP_CELL, ::FP_DONE);
+    ::g_fwEngine_EmitPings_Post = ::g_fn_RegisterForward("DoD_OnEngine_EmitPings_Post", ::ET_IGNORE, ::FP_CELL, ::FP_CELL, ::FP_DONE);
 #endif
 
     ::tagAMX* pAmx;
@@ -6531,6 +6719,18 @@ void OnPluginsLoaded()
             ::g_DoDEngine_HostStatus_Hook = true;
         }
 
+        if (::g_pDoDEngine_HostStat_Addr && false == ::g_DoDEngine_HostStat_Hook &&
+            (::g_fn_AmxFindPublic(pAmx, "DoD_OnEngine_HostStat", &Func) == ::AMX_ERR_NONE ||
+                ::g_fn_AmxFindPublic(pAmx, "DoD_OnEngine_HostStat_Post", &Func) == ::AMX_ERR_NONE))
+        {
+            ::DoD_Engine_HostStat = (::DoD_Engine_HostStat_Type) ::g_pDoDEngine_HostStat_Addr;
+            ::DetourTransactionBegin();
+            ::DetourUpdateThread(::GetCurrentThread());
+            ::DetourAttach(&(void*&) ::DoD_Engine_HostStat, ::DoD_Engine_HostStat_Hook);
+            ::DetourTransactionCommit();
+            ::g_DoDEngine_HostStat_Hook = true;
+        }
+
         if (::g_pDoDDestroyItem_Addr && false == ::g_DoDDestroyItem_Hook &&
             (::g_fn_AmxFindPublic(pAmx, "DoD_OnDestroyItem", &Func) == ::AMX_ERR_NONE ||
                 ::g_fn_AmxFindPublic(pAmx, "DoD_OnDestroyItem_Post", &Func) == ::AMX_ERR_NONE))
@@ -6763,6 +6963,16 @@ void OnPluginsLoaded()
             ::g_DoDEngine_HostStatus_Hook = true;
         }
 
+        if (::g_pDoDEngine_HostStat_Addr && false == ::g_DoDEngine_HostStat_Hook &&
+            (::g_fn_AmxFindPublic(pAmx, "DoD_OnEngine_HostStat", &Func) == ::AMX_ERR_NONE ||
+                ::g_fn_AmxFindPublic(pAmx, "DoD_OnEngine_HostStat_Post", &Func) == ::AMX_ERR_NONE))
+        {
+            ::g_pDoDEngine_HostStat = ::subhook_new(::g_pDoDEngine_HostStat_Addr, ::DoD_Engine_HostStat_Hook, ::SUBHOOK_TRAMPOLINE);
+            ::subhook_install(::g_pDoDEngine_HostStat);
+            ::DoD_Engine_HostStat = (::DoD_Engine_HostStat_Type) ::subhook_get_trampoline(::g_pDoDEngine_HostStat);
+            ::g_DoDEngine_HostStat_Hook = true;
+        }
+
         if (::g_pDoDEngine_WriteByte_Addr && false == ::g_DoDEngine_WriteByte_Hook &&
             (::g_fn_AmxFindPublic(pAmx, "DoD_OnEngine_WriteByte", &Func) == ::AMX_ERR_NONE ||
                 ::g_fn_AmxFindPublic(pAmx, "DoD_OnEngine_WriteByte_Post", &Func) == ::AMX_ERR_NONE))
@@ -6781,6 +6991,16 @@ void OnPluginsLoaded()
             ::subhook_install(::g_pDoDEngine_WriteBits);
             ::DoD_Engine_WriteBits = (::DoD_Engine_WriteBits_Type) ::subhook_get_trampoline(::g_pDoDEngine_WriteBits);
             ::g_DoDEngine_WriteBits_Hook = true;
+        }
+
+        if (::g_pDoDEngine_EmitPings_Addr && false == ::g_DoDEngine_EmitPings_Hook &&
+            (::g_fn_AmxFindPublic(pAmx, "DoD_OnEngine_EmitPings", &Func) == ::AMX_ERR_NONE ||
+                ::g_fn_AmxFindPublic(pAmx, "DoD_OnEngine_EmitPings_Post", &Func) == ::AMX_ERR_NONE))
+        {
+            ::g_pDoDEngine_EmitPings = ::subhook_new(::g_pDoDEngine_EmitPings_Addr, ::DoD_Engine_EmitPings_Hook, ::SUBHOOK_TRAMPOLINE);
+            ::subhook_install(::g_pDoDEngine_EmitPings);
+            ::DoD_Engine_EmitPings = (::DoD_Engine_EmitPings_Type) ::subhook_get_trampoline(::g_pDoDEngine_EmitPings);
+            ::g_DoDEngine_EmitPings_Hook = true;
         }
 
         if (::g_pDoDDestroyItem_Addr && false == ::g_DoDDestroyItem_Hook &&
@@ -6935,6 +7155,14 @@ void OnPluginsUnloaded()
         ::DetourDetach(&(void*&) ::DoD_Engine_HostStatus, ::DoD_Engine_HostStatus_Hook);
         ::DetourTransactionCommit();
         ::g_DoDEngine_HostStatus_Hook = false;
+    }
+    if (::g_DoDEngine_HostStat_Hook)
+    {
+        ::DetourTransactionBegin();
+        ::DetourUpdateThread(::GetCurrentThread());
+        ::DetourDetach(&(void*&) ::DoD_Engine_HostStat, ::DoD_Engine_HostStat_Hook);
+        ::DetourTransactionCommit();
+        ::g_DoDEngine_HostStat_Hook = false;
     }
     if (::g_DoDSubRemove_Hook)
     {
@@ -7139,6 +7367,12 @@ void OnPluginsUnloaded()
         ::subhook_free(::g_pDoDEngine_HostStatus);
         ::g_DoDEngine_HostStatus_Hook = false;
     }
+    if (::g_DoDEngine_HostStat_Hook)
+    {
+        ::subhook_remove(::g_pDoDEngine_HostStat);
+        ::subhook_free(::g_pDoDEngine_HostStat);
+        ::g_DoDEngine_HostStat_Hook = false;
+    }
     if (::g_DoDEngine_WriteByte_Hook)
     {
         ::subhook_remove(::g_pDoDEngine_WriteByte);
@@ -7150,6 +7384,12 @@ void OnPluginsUnloaded()
         ::subhook_remove(::g_pDoDEngine_WriteBits);
         ::subhook_free(::g_pDoDEngine_WriteBits);
         ::g_DoDEngine_WriteBits_Hook = false;
+    }
+    if (::g_DoDEngine_EmitPings_Hook)
+    {
+        ::subhook_remove(::g_pDoDEngine_EmitPings);
+        ::subhook_free(::g_pDoDEngine_EmitPings);
+        ::g_DoDEngine_EmitPings_Hook = false;
     }
 #endif
 }
