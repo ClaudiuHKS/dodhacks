@@ -5,14 +5,14 @@
 #include <amxmisc>
 #include <fakemeta>
 
-#define TaskOffs_Lighting 1073709057 /** -32767+2^30 value. A value other plugins do not use. */
+#define TaskOffs_Lighting 2064384 /** -32768+2^21 value. A value other plugins do not use. */
 
 new g_lightingHook;
 new g_Lighting[2] = { '?', EOS };
 
 public plugin_init()
 {
-    register_plugin("DoD Hacks: Lighting", "1.0.0.7", "HKS Hattrick (claudiuhks)");
+    register_plugin("DoD Hacks: Lighting", "1.0.0.8", "HKS Hattrick (claudiuhks)");
 
     new Buffer[256];
     get_configsdir(Buffer, charsmax(Buffer));
@@ -20,7 +20,8 @@ public plugin_init()
     new Config = fopen(Buffer, "r");
     if (!Config)
     {
-        set_fail_state("Error opening '%s'!", Buffer);
+        log_amx("Error opening '%s'!", Buffer);
+        set_fail_state("Error opening plugin specific cfg. file!");
         return PLUGIN_HANDLED;
     }
 

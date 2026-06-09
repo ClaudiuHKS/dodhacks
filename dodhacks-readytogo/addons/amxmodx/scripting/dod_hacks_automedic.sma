@@ -20,7 +20,7 @@ new Float: g_Delay; /// The delay in seconds between the moment of getting wound
 
 public plugin_init()
 {
-    register_plugin("DoD Hacks: Auto Medic", "1.0.0.7", "Hattrick HKS (claudiuhks)");
+    register_plugin("DoD Hacks: Auto Medic", "1.0.0.8", "Hattrick HKS (claudiuhks)");
 
     g_maxPlayers = get_maxplayers();
     set_task(g_taskInterval, "Task_HealPlayers", .flags = "b");
@@ -46,7 +46,8 @@ public plugin_precache()
     new Config = fopen(Buffer, "r");
     if (!Config)
     {
-        set_fail_state("Error opening '%s'!", Buffer);
+        log_amx("Error opening '%s'!", Buffer);
+        set_fail_state("Error opening plugin specific cfg. file!");
         return PLUGIN_HANDLED;
     }
 
@@ -160,5 +161,21 @@ strTransformEx(Buffer[], const Key[], Skip, Chars, bool: lowerCase)
     if (Pos > -1)
         for (Iter = Skip + Pos; Iter < Pos + Skip + Chars; Iter++)
             Buffer[Iter] = lowerCase ? char_to_lower(Buffer[Iter]) : char_to_upper(Buffer[Iter]);
+}
+#endif
+
+#if !defined char_to_upper || !defined char_to_lower || !defined MAX_STRING_LENGTH
+char_to_upper(c)
+{
+	if (c >= 'a' && c <= 'z')
+		return (c & ~(1 << 5));
+	return c;
+}
+
+char_to_lower(c)
+{
+	if (c >= 'A' && c <= 'Z')
+		return (c | (1 << 5));
+	return c;
 }
 #endif

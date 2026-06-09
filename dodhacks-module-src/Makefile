@@ -167,7 +167,8 @@ OPT += -Wl,--wrap=__isoc23_sscanf
 
 default:
 
-	rm -r -f "$(CURDIR)/$(OUT)" "$(CURDIR)/*.so" "$(CURDIR)/*.0" "$(CURDIR)/*.o" "$(CURDIR)/*.log" "$(CURDIR)/Linux-Release" "$(CURDIR)/Linux-Release-AVX2"
+	rm -r -f "$(CURDIR)/$(OUT)" "$(CURDIR)/*.so" "$(CURDIR)/*.0" "$(CURDIR)/*.o" "$(CURDIR)/*.log" \
+				"$(CURDIR)/Linux-Release" "$(CURDIR)/Linux-Release-AVX" "$(CURDIR)/Linux-Release-AVX2"
 	rm -f    "$(CURDIR)/$(OUT)" "$(CURDIR)/*.so" "$(CURDIR)/*.0" "$(CURDIR)/*.o" "$(CURDIR)/*.log"
 
 ifneq ($(OFL),)
@@ -175,9 +176,11 @@ ifneq ($(OFL),)
 endif
 
 ifneq ($(LIB),)
-	mkdir "$(CURDIR)/Linux-Release"      ; $(CMD) $(SRC) $(LIB) $(DEF) $(HDR) $(OPT)        -o "$(CURDIR)/Linux-Release/$(OUT)"
-	mkdir "$(CURDIR)/Linux-Release-AVX2" ; $(CMD) $(SRC) $(LIB) $(DEF) $(HDR) $(OPT) -mavx2 -o "$(CURDIR)/Linux-Release-AVX2/$(OUT)"
+	mkdir "$(CURDIR)/Linux-Release"      ; $(CMD) $(SRC) $(LIB) $(DEF) $(HDR) $(OPT)              -o "$(CURDIR)/Linux-Release/$(OUT)"
+	mkdir "$(CURDIR)/Linux-Release-AVX"  ; $(CMD) $(SRC) $(LIB) $(DEF) $(HDR) $(OPT) -mavx        -o "$(CURDIR)/Linux-Release-AVX/$(OUT)"
+	mkdir "$(CURDIR)/Linux-Release-AVX2" ; $(CMD) $(SRC) $(LIB) $(DEF) $(HDR) $(OPT) -mavx2 -mbmi -o "$(CURDIR)/Linux-Release-AVX2/$(OUT)"
 else
-	mkdir "$(CURDIR)/Linux-Release"      ; $(CMD) $(SRC)        $(DEF) $(HDR) $(OPT)        -o "$(CURDIR)/Linux-Release/$(OUT)"
-	mkdir "$(CURDIR)/Linux-Release-AVX2" ; $(CMD) $(SRC)        $(DEF) $(HDR) $(OPT) -mavx2 -o "$(CURDIR)/Linux-Release-AVX2/$(OUT)"
+	mkdir "$(CURDIR)/Linux-Release"      ; $(CMD) $(SRC)        $(DEF) $(HDR) $(OPT)              -o "$(CURDIR)/Linux-Release/$(OUT)"
+	mkdir "$(CURDIR)/Linux-Release-AVX"  ; $(CMD) $(SRC)        $(DEF) $(HDR) $(OPT) -mavx        -o "$(CURDIR)/Linux-Release-AVX/$(OUT)"
+	mkdir "$(CURDIR)/Linux-Release-AVX2" ; $(CMD) $(SRC)        $(DEF) $(HDR) $(OPT) -mavx2 -mbmi -o "$(CURDIR)/Linux-Release-AVX2/$(OUT)"
 endif

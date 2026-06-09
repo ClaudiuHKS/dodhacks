@@ -39,12 +39,12 @@ enum ctrlChar
 
 new g_cvarHostName;
 #if defined hook_cvar_change
-new cvarhook: g_hookHostNameConVarChange;
+new cvarhook: g_hookHostNameConVarChange = cvarhook: -1;
 #endif
 
 public plugin_init()
 {
-    register_plugin("DoD Hacks: Host Name", "1.0.0.7", "Hattrick HKS (claudiuhks)");
+    register_plugin("DoD Hacks: Host Name", "1.0.0.8", "Hattrick HKS (claudiuhks)");
     g_cvarHostName = get_cvar_pointer("hostname");
     set_task(0.000001, "Task_PluginCfg");
 }

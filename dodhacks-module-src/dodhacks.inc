@@ -958,6 +958,12 @@ native bool: DoD_AddHealthIfWounded(Player, Health, &Added);
 native bool: DoD_IsPlayerFullHealth(Player);
 
 /**
+ * Changes current map
+ * to another one.
+ */
+native bool: DoD_ChangeMap(const Map[], bool: ExecHooks = false);
+
+/**
  * Adds a scope to the given weapon
  * (either weapon_fg42 or weapon_enfield
  * entity). Returns true on success.
@@ -1416,6 +1422,38 @@ native bool: DoD_FindSignature(const Module[], const Signature[], bool: Question
 native bool: DoD_FindSymbol(const Module[], const Symbol[], &DoD_Address: Address);
 
 /**
+ * Windows only.
+ *
+ * Finds an address in
+ * memory of a module
+ * by using a string.
+ * Returns true on
+ * success. It finds
+ * the address where
+ * the string is being
+ * pushed.
+ *
+ * Module can be "dod",
+ * "cs", "tfc", "hl",
+ * "dmc", "ricochet"
+ * or "mp".
+ *
+ * Module can be
+ * "engine" on Linux
+ * and "swds" on
+ * Windows. You should
+ * use
+ * 'is_linux_server()'.
+ *
+ * Module can be
+ * "file_i386",
+ * "file_i486" and
+ * "file_i686" on
+ * Linux (as example).
+ */
+native bool: DoD_FindStringPush(const Module[], const String[], &DoD_Address: Address);
+
+/**
  * Reads a value from an
  * address. Returns true
  * on success.
@@ -1598,7 +1636,7 @@ native bool: DoD_UnblockFromPlayerCollision(Entity);
  * Returns true if it was off.
  * False otherwise.
  */
-native bool: DoD_AddExploNadeProjGlow(Mode, Fx, Color[3], Amount, Solid, bool: alterSolidState);
+native bool: DoD_AddSelfExploNadeProjGlow(Mode, Fx, Color[3], Amount, Solid, bool: alterSolidState);
 
 /**
  * Disallows players see their
@@ -1611,25 +1649,78 @@ native bool: DoD_AddExploNadeProjGlow(Mode, Fx, Color[3], Amount, Solid, bool: a
  * Returns true if it was
  * enabled. False otherwise.
  */
-native bool: DoD_DelExploNadeProjGlow();
+native bool: DoD_DelSelfExploNadeProjGlow();
 
 /**
  * Sets a player excluded
  * or unexcluded
  * from seeing explosive
- * grenade projectiles
+ * own grenade projectiles
  * glowing. Players are
  * initially unexcluded.
  */
-native bool: DoD_SetExploNadeProjGlow(Player, bool: Excluded);
+native bool: DoD_SetSelfExploNadeProjGlow(Player, bool: Excluded);
 
 /**
  * Gets whether a player
  * is excluded from seeing
- * explosive grenade
+ * own explosive grenade
  * projectiles glowing.
  */
-native bool: DoD_GetExploNadeProjGlow(Player);
+native bool: DoD_GetSelfExploNadeProjGlow(Player);
+
+/**
+ * Installs/ updates
+ * pfnAddToFullPack_Post() for
+ * this map and allows players
+ * to see their team explo.
+ * nade projectiles glowing.
+ *
+ * Solid is
+ * 'short ::entity_state_s::solid'.
+ * Can be SOLID_NOT.
+ *
+ * If alterSolidState is set to
+ * false, Solid param. is ignored.
+ *
+ * Intended to be called in
+ * plugin_init().
+ *
+ * Returns true if it was off.
+ * False otherwise.
+ */
+native bool: DoD_AddTeamExploNadeProjGlow(Mode, Fx, Color[3], Amount, Solid, bool: alterSolidState);
+
+/**
+ * Disallows players see their
+ * team explo. nade projectiles
+ * glowing.
+ *
+ * Uninstalls
+ * pfnAddToFullPack_Post().
+ *
+ * Returns true if it was
+ * enabled. False otherwise.
+ */
+native bool: DoD_DelTeamExploNadeProjGlow();
+
+/**
+ * Sets a player excluded
+ * or unexcluded
+ * from seeing explosive
+ * team grenade projectiles
+ * glowing. Players are
+ * initially unexcluded.
+ */
+native bool: DoD_SetTeamExploNadeProjGlow(Player, bool: Excluded);
+
+/**
+ * Gets whether a player
+ * is excluded from seeing
+ * explosive team grenade
+ * projectiles glowing.
+ */
+native bool: DoD_GetTeamExploNadeProjGlow(Player);
 
 /**
  * Installs/ updates

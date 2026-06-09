@@ -6,15 +6,19 @@
 #include <dodconst>
 #include <dodhacks>
 
-#define Linux_Difference_Offset_Weapons        4             /// +4 only on Linux. For 'get_pdata_*' funcs. Weapon entities only.
-#define PV_CWeaponBox_m_rgpPlayerItems        82             /// For 'get_pdata_cbase'. '::CBasePlayerItem* ::CWeaponBox::m_rgpPlayerItems[6]' var.
-#define INT_CBasePlayer_m_iClientHealth      267             /// 'int ::CBasePlayer::m_iClientHealth' variable.
-#define PV_CBasePlayer_m_rgpPlayerItems      272             /// '::CBasePlayerItem* ::CBasePlayer::m_rgpPlayerItems[6]' variable.
-#define PV_CBasePlayer_m_pActiveItem         278             /// '::CBasePlayerItem* ::CBasePlayer::m_pActiveItem' variable.
-#define PV_CBasePlayer_m_pLastItem           280             /// '::CBasePlayerItem* ::CBasePlayer::m_pLastItem' variable.
-#define ThrowingKnives_UserIdTaskOffset  1081343             /// 32767+2^20. Some offset other plugins don't use.
-#define ThrowingKnives_RemoveTaskOffset 33619967             /// 65535+2^25.
-#define ThrowingKnives_EntityFlagValue  16744448             /// -32768+2^24. This is the thrown knife weaponbox.
+#if !defined SetHamParamItemInfo /// The AMX Mod X version that added 'Ham_DOD_Item_DropGren' has also added 'SetHamParamItemInfo()'.
+#error AMX Mod X version too old to handle dod_hacks_knives plugin! Consider upgrading! ('Ham_DOD_Item_DropGren' is needed ...)
+#endif
+
+#define Linux_Difference_Offset_Weapons         4            /// +4 only on Linux. For 'get_pdata_*' funcs. Weapon entities only.
+#define PV_CWeaponBox_m_rgpPlayerItems         82            /// For 'get_pdata_cbase'. '::CBasePlayerItem* ::CWeaponBox::m_rgpPlayerItems[6]' var.
+#define INT_CBasePlayer_m_iClientHealth       267            /// 'int ::CBasePlayer::m_iClientHealth' variable.
+#define PV_CBasePlayer_m_rgpPlayerItems       272            /// '::CBasePlayerItem* ::CBasePlayer::m_rgpPlayerItems[6]' variable.
+#define PV_CBasePlayer_m_pActiveItem          278            /// '::CBasePlayerItem* ::CBasePlayer::m_pActiveItem' variable.
+#define PV_CBasePlayer_m_pLastItem            280            /// '::CBasePlayerItem* ::CBasePlayer::m_pLastItem' variable.
+#define ThrowingKnives_UserIdTaskOffset   1081343            /// 32767+2^20. Some offset other plugins don't use.
+#define ThrowingKnives_EntityFlagValue   16744448            /// -32768+2^24. This is the thrown knife weaponbox.
+#define ThrowingKnives_RemoveTaskOffset 134283263            /// 65535+2^27.
 #define ThrowingKnives_EntityKeyForFlag pev_flSwimTime       /// Something unrelated to a "weaponbox" entity.
 #define ThrowingKnives_EntityKeyForTime pev_pain_finished    /// get_gametime() at the moment of throwing knife launch/ throw time.
 #define WeaponSpade_WorldModelFilePath  "models/w_spade.mdl" /// Spade requires pre-caching and re-modeling (world model only).
@@ -48,7 +52,7 @@ new DoD_Address: g_wpnBoxKill = DoD_Address: DoD_Address_Null;
 
 public plugin_init()
 {
-    register_plugin("DoD Hacks: Knives", "1.0.0.7", "Hattrick HKS (claudiuhks)");
+    register_plugin("DoD Hacks: Knives", "1.0.0.8", "Hattrick HKS (claudiuhks)");
 
     new Buffer[256];
     get_configsdir(Buffer, charsmax(Buffer));
@@ -56,7 +60,8 @@ public plugin_init()
     new Config = fopen(Buffer, "r");
     if (!Config)
     {
-        set_fail_state("Error opening '%s'!", Buffer);
+        log_amx("Error opening '%s'!", Buffer);
+        set_fail_state("Error opening plugin specific cfg. file!");
         return PLUGIN_HANDLED;
     }
 
@@ -386,7 +391,9 @@ handlePlayerAttack:
         g_isPlayerAwaiting[Owner] = false;
         return HAM_SUPERCEDE;
     }
-    /// All cases managed above.
+    /// All cases managed above. If your older AMX Mod X compiler says that this function should still return a value,
+    /// uncomment the following line (by removing the '///' from "return" word below):
+    ///return HAM_IGNORED;
 }
 
 public DoD_OnPlayerSpawn_Post(DoD_Address: CDoDTeamPlay, Player)

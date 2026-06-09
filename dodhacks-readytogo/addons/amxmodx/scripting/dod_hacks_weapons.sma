@@ -20,6 +20,15 @@
 /// mysql is better than sqlite with up to 10%.
 ///
 
+#if !defined MPROP_PAGE_CALLBACK
+#error AMX Mod X version too old to handle dod_hacks_weapons plugin! Consider upgrading! ('MPROP_PAGE_CALLBACK' is needed ...)
+#endif
+
+#define INT_CBasePlayer_m_rgAmmo_ANade     290 /// Allies/ British (weapon_handgrenade)     player ammo count (int CBasePlayer::m_rgAmmo[32]). Cell  #9.
+// #define INT_CBasePlayer_m_rgAmmo_AANade 291 /// Allies/ British (weapon_handgrenade_ex)  player ammo count (int CBasePlayer::m_rgAmmo[32]). Cell #10.
+#define INT_CBasePlayer_m_rgAmmo_GNade     292 /// Axis            (weapon_stickgrenade)    player ammo count (int CBasePlayer::m_rgAmmo[32]). Cell #11.
+// #define INT_CBasePlayer_m_rgAmmo_AGNade 293 /// Axis            (weapon_stickgrenade_ex) player ammo count (int CBasePlayer::m_rgAmmo[32]). Cell #12.
+
 #if !defined _dod_hacks_knives_included /// Works without this too.
 native bool: DoD_IsUserWaitingThrowingKnife(Player);
 #endif
@@ -45,6 +54,7 @@ new bool: g_HideMsg; /// Whether or not to hide the 'guns' chat command typed by
 new bool: g_British; /// Map is optimized for British against Axis.
 new bool: g_Delete; /// Delete the dropped gun when selecting a new one via the menu.
 new bool: g_HudStyle; /// Whether or not to use a visual effect on the HUD message(s).
+new bool: g_ForceMaxOneNadePerSpawn; /// Whether or not to force max. 1 explo. grenade per player spawn (to be given).
 new bool: g_badIsUserWaitingThrowingKnife = false; /// 'DoD_IsUserWaitingThrowingKnife' function has not been found on the server (if true).
 new Float: g_SpawnTime[33]; /// Time when the player spawned.
 new Float: g_EquipTime[33]; /// Time when the player got equipped.
@@ -80,17 +90,25 @@ new g_MaxPlayers; /// Maximum players server can handle.
 new g_Flag; /// Admin access required for using this feature ('guns' command).
 new g_FlagNades; /// Admin access required for receiving explosive grenade(s) during spawn.
 new g_FlagHandGuns; /// Admin access required for receiving hand gun ammo during spawn.
+new Handle: g_sqlCon = Empty_Handle;
+new bool: g_initiallyConnected = false;
 
 public plugin_init()
 {
-    register_plugin("DoD Hacks: Weapons", "1.0.0.7", "Hattrick HKS (claudiuhks)");
+    register_plugin("DoD Hacks: Weapons", "1.0.0.8", "Hattrick HKS (claudiuhks)");
 
+    if (!F_SafeIsSqlModuleRunning("sqlite") && !F_SafeIsSqlModuleRunning("mysql"))
+    {
+        set_fail_state("'../amxmodx/configs/modules.ini' needs either sqlite or mysql enabled!");
+        return PLUGIN_HANDLED;
+    }
     get_configsdir(g_Buffer, charsmax(g_Buffer));
     add(g_Buffer, charsmax(g_Buffer), "/dod_hacks_weapons.ini");
     new Config = fopen(g_Buffer, "r");
     if (!Config)
     {
-        set_fail_state("Error opening '%s'!", g_Buffer);
+        log_amx("Error opening '%s'!", g_Buffer);
+        set_fail_state("Error opening plugin specific cfg. file!");
         return PLUGIN_HANDLED;
     }
     g_Names = ArrayCreate(32);
@@ -100,7 +118,8 @@ public plugin_init()
     g_Counts = ArrayCreate();
     g_British = DoD_AreAlliesBritish();
     new bool: AdminAsterisk, bool: allowAll, FlagsNum, Driver[16], User[32], Pass[32],
-        Db[32], Host[32], Weapon[32], Name[32], Team[32], Flags[32], Ammo[32], Count[8];
+        Db[32], Host[32], Weapon[32], Name[32], Team[32], Flags[32], Ammo[32], Count[8],
+        errCode, Err[4];
     while (fgets(Config, g_Buffer, charsmax(g_Buffer)) > 0)
     {
         trim(g_Buffer);
@@ -190,6 +209,8 @@ public plugin_init()
                 g_FlagNades = read_flags(Name);
             else if (equali(Weapon, "@handguns_access"))
                 g_FlagHandGuns = read_flags(Name);
+            else if (equali(Weapon, "@g_ForceMaxOneNadePerSpawn"))
+                g_ForceMaxOneNadePerSpawn = bool: str_to_num(Name);
             continue;
         }
         if (false == allowAll &&
@@ -240,28 +261,41 @@ public plugin_init()
     }
     SQL_GetAffinity(g_Buffer, charsmax(g_Buffer));
     if (!equali(g_Buffer, Driver))
-        SQL_SetAffinity(Driver);
-    g_Sql = SQL_MakeDbTuple(Host, User, Pass, Db);
-    if (Empty_Handle != g_Sql)
+        if (!SQL_SetAffinity(Driver))
+            log_amx("SQL_SetAffinity('%s') call failed. Ensure the module is enabled in '../amxmodx/configs/modules.ini'.",
+                Driver);
+    g_Sql = SQL_MakeDbTuple(Host, User, Pass, Db, 3);
+    g_sqlCon = SQL_Connect(g_Sql, errCode, Err, charsmax(Err));
+    if (Empty_Handle != g_sqlCon)
     {
+        g_initiallyConnected = true;
+        SQL_FreeHandle(g_sqlCon);
+        g_sqlCon = Empty_Handle;
         if (g_British)
         {
             if (g_Local)
                 SQL_ThreadQuery(g_Sql, "EmptySqlHandler",
-                    "create table if not exists guns_british (gun tinyint, steam character(32) unique)");
+                    "CREATE TABLE IF NOT EXISTS guns_british (gun TINYINT NOT NULL, steam CHARACTER (32) NOT NULL UNIQUE COLLATE NOCASE, PRIMARY KEY (steam), UNIQUE (steam))");
             else
                 SQL_ThreadQuery(g_Sql, "EmptySqlHandler",
-                    "create table if not exists guns_british (gun int(4), steam varchar(32) unique)");
+                    "CREATE TABLE IF NOT EXISTS guns_british (gun TINYINT NOT NULL, steam CHAR (32) NOT NULL COLLATE utf8mb4_unicode_520_ci, PRIMARY KEY (steam), UNIQUE (steam)) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_520_ci");
         }
         else
         {
             if (g_Local)
                 SQL_ThreadQuery(g_Sql, "EmptySqlHandler",
-                    "create table if not exists guns_allies (gun tinyint, steam character(32) unique)");
+                    "CREATE TABLE IF NOT EXISTS guns_allies (gun TINYINT NOT NULL, steam CHARACTER (32) NOT NULL UNIQUE COLLATE NOCASE, PRIMARY KEY (steam), UNIQUE (steam))");
             else
                 SQL_ThreadQuery(g_Sql, "EmptySqlHandler",
-                    "create table if not exists guns_allies (gun int(4), steam varchar(32) unique)");
+                    "CREATE TABLE IF NOT EXISTS guns_allies (gun TINYINT NOT NULL, steam CHAR (32) NOT NULL COLLATE utf8mb4_unicode_520_ci, PRIMARY KEY (steam), UNIQUE (steam)) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_520_ci");
         }
+    }
+    else
+    {
+        log_amx("Weapons plugin loaded with MySQL server being offline.");
+        log_amx("As soon as the connection establishes, map will restart automatically.");
+        log_amx("If you are using SQLite, 'sqlite' module needs to be enabled in '../amxmodx/configs/modules.ini'.");
+        set_task(0.1, "Task_VerifyConnection");
     }
     return PLUGIN_CONTINUE;
 }
@@ -313,14 +347,14 @@ public client_authorized(Player)
     static Info[32];
 #endif
     g_IsAuth[Player] = true;
-    if (copy(g_Steam[Player], charsmax(g_Steam[]), Steam) > 4 && Empty_Handle != g_Sql)
+    if (copy(g_Steam[Player], charsmax(g_Steam[]), Steam) > 4 && g_initiallyConnected)
     { /// Skipping fake players (long enough Steam string).
         if (g_British)
             formatex(g_Buffer, charsmax(g_Buffer),
-                "select gun from guns_british where steam = '%s'", Steam);
+                "SELECT gun FROM guns_british WHERE steam = '%s'", Steam);
         else
             formatex(g_Buffer, charsmax(g_Buffer),
-                "select gun from guns_allies where steam = '%s'", Steam);
+                "SELECT gun FROM guns_allies WHERE steam = '%s'", Steam);
 
         num_to_str(get_user_userid(Player), Info, charsmax(Info));
         SQL_ThreadQuery(g_Sql, "OnSqlSelection", g_Buffer, Info, sizeof Info);
@@ -502,6 +536,28 @@ public OnWeaponMenuPage(Player, Status)
     }
 }
 
+public Task_VerifyConnection()
+{
+    static Map[64], errCode, Err[4];
+    g_sqlCon = SQL_Connect(g_Sql, errCode, Err, charsmax(Err));
+    if (Empty_Handle != g_sqlCon)
+    {
+        SQL_FreeHandle(g_sqlCon);
+        get_mapname(Map, charsmax(Map));
+#if defined engine_changelevel
+        engine_changelevel(Map);
+#else
+#if defined NULL_STRING
+        engfunc(EngFunc_ChangeLevel, Map, NULL_STRING);
+#else
+        DoD_ChangeMap(Map);
+#endif
+#endif
+    }
+    else
+        set_task(0.1, "Task_VerifyConnection");
+}
+
 public OnWeaponMenuItem(Player, Menu, Item)
 {
     static Weapon[32], Name[32], Buffer[32], Access, Count, Flags, Entity, Res, Float: Time, Float: Wait, Players, Float: Percent;
@@ -626,7 +682,7 @@ NoAccess:
         }
         else
             client_print(Player, print_chat, "* %s selected. Type 'guns' for more.", Name);
-        if (Empty_Handle != g_Sql && g_IsAuth[Player])
+        if (g_initiallyConnected && g_IsAuth[Player])
             F_StoreSelection(Player); /// Store the selection.
     }
     return PLUGIN_CONTINUE;
@@ -682,19 +738,19 @@ public Task_RemoveWeaponBox(Entity)
 
 public DOD_ON_PLAYER_DISCONNECTED
 {
-    if (Empty_Handle != g_Sql && g_IsAuth[Player] && g_Gun[Player] > -1)
+    if (g_initiallyConnected && g_IsAuth[Player] && g_Gun[Player] > -1)
         F_StoreSelection(Player); /// Store the selection.
     ArrayClear(g_Items[Player]);
     ArrayClear(g_Entities[Player]);
     F_ZeroPlayerVars(Player);
 }
 
-public EmptySqlHandler()
-{
-}
+public EmptySqlHandler(FailState, Handle: Query, const Error[], ErrorNum)
+    if (TQUERY_QUERY_FAILED == FailState)
+        log_amx("SQL Error (#%d): %s", ErrorNum, Error);
 
 #if defined FindPlayerFlags
-public OnSqlSelection(FailState, Handle: Query, Error[], ErrorNum, Data[])
+public OnSqlSelection(FailState, Handle: Query, const Error[], ErrorNum, const Data[])
 {
     static Player, Gun, Players, Float: Percent, Name[32];
     if (Query != Empty_Handle && SQL_NumResults(Query) > 0)
@@ -771,7 +827,7 @@ public OnSqlSelection(FailState, Handle: Query, Error[], ErrorNum, Data[])
     }
 }
 #else
-public OnSqlSelection(FailState, Handle: Query, Error[], ErrorNum, Data[])
+public OnSqlSelection(FailState, Handle: Query, const Error[], ErrorNum, const Data[])
 {
     static UniqueIndex, Player, Gun, Players, Float: Percent, Name[32];
     if (Query != Empty_Handle && SQL_NumResults(Query) > 0)
@@ -855,7 +911,14 @@ public OnSqlSelection(FailState, Handle: Query, Error[], ErrorNum, Data[])
 
 public DoD_OnGiveNamedItem(Player, Item[], ItemSize /** = 64 */, &OverrideRes)
 { /// Item may be altered during execution.
-    if (!g_InSpawn[Player] || g_Fake[Player])
+    if (!g_InSpawn[Player])
+        return PLUGIN_CONTINUE; /// Skip.
+    if (g_ForceMaxOneNadePerSpawn &&
+        (get_pdata_int(Player, INT_CBasePlayer_m_rgAmmo_ANade) ||
+        get_pdata_int(Player, INT_CBasePlayer_m_rgAmmo_GNade)) &&
+        DoD_IsWeaponGrenade(Item))
+        return PLUGIN_HANDLED;
+    if (g_Fake[Player])
         return PLUGIN_CONTINUE; /// Skip.
     if (DoD_IsWeaponPrimary(Item)) /// Do not auto. give a prim. weap. by default (excl. fake players).
         return PLUGIN_HANDLED;
@@ -1043,22 +1106,22 @@ F_StoreSelection(Player)
     {
         if (g_Local)
             formatex(g_Buffer, charsmax(g_Buffer),
-                "insert into guns_british values (%d, '%s') on conflict (steam) do update set gun = %d",
+                "INSERT INTO guns_british VALUES (%d, '%s') ON CONFLICT (steam) DO UPDATE SET gun = %d",
                 g_Gun[Player], g_Steam[Player], g_Gun[Player]);
         else
             formatex(g_Buffer, charsmax(g_Buffer),
-                "insert into guns_british values (%d, '%s') on duplicate key update gun = %d",
+                "INSERT INTO guns_british VALUES (%d, '%s') ON DUPLICATE KEY UPDATE gun = %d",
                 g_Gun[Player], g_Steam[Player], g_Gun[Player]);
     }
     else
     {
         if (g_Local)
             formatex(g_Buffer, charsmax(g_Buffer),
-                "insert into guns_allies values (%d, '%s') on conflict (steam) do update set gun = %d",
+                "INSERT INTO guns_allies VALUES (%d, '%s') ON CONFLICT (steam) DO UPDATE SET gun = %d",
                 g_Gun[Player], g_Steam[Player], g_Gun[Player]);
         else
             formatex(g_Buffer, charsmax(g_Buffer),
-                "insert into guns_allies values (%d, '%s') on duplicate key update gun = %d",
+                "INSERT INTO guns_allies VALUES (%d, '%s') ON DUPLICATE KEY UPDATE gun = %d",
                 g_Gun[Player], g_Steam[Player], g_Gun[Player]);
     }
     SQL_ThreadQuery(g_Sql, "EmptySqlHandler", g_Buffer);
@@ -1195,3 +1258,49 @@ F_EraseEntityFromDroppedGuns(Entity)
         ArrayDeleteItem(g_Times, Entry);
     }
 }
+
+bool: F_SafeIsSqlModuleRunning(const Name[])
+{
+    new Buffer[256];
+    get_localinfo("amxx_modules", Buffer, charsmax(Buffer));
+    new File = fopen(Buffer, "r");
+    if (!File)
+        return false;
+    new Len = strlen(Name);
+    while (fgets(File, Buffer, charsmax(Buffer)))
+    {
+        trim(Buffer);
+        if (equali(Buffer, Name, Len))
+        {
+            fclose(File);
+            return true;
+        }
+    }
+    fclose(File);
+    return false;
+}
+
+#if !defined ArrayResize
+ArrayFindString(Array: Which, const String[])
+{
+    static Iter, Size, Buffer[256];
+    Size = ArraySize(Which);
+    for (Iter = 0; Iter < Size; Iter++)
+    {
+        ArrayGetString(Which, Iter, Buffer, charsmax(Buffer));
+        if (equal(Buffer, String))
+            return Iter;
+    }
+    return -1;
+}
+
+ArrayFindValue(Array: Which, Value)
+{
+    static Iter, Size;
+    Size = ArraySize(Which);
+    for (Iter = 0; Iter < Size; Iter++)
+        if (Value == ArrayGetCell(Which, Iter))
+            return Iter;
+    return -1;
+}
+#endif

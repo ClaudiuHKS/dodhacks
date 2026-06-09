@@ -10,6 +10,7 @@
 #include <link.h>
 #endif
 
+#include <time.h>
 #include <usercmd.h>
 #include <entity_state.h>
 #include <Memory.h>
@@ -480,6 +481,15 @@ int g_selfNadeAmt = false;
 ::color24 g_selfNadeColor{ };
 bool g_exclSelfNadeGlow[33]{ };
 
+bool g_teamNade = false;
+bool g_teamNadeDoSolid = false;
+short g_teamNadeSolid = false;
+int g_teamNadeMode = false;
+int g_teamNadeFx = false;
+int g_teamNadeAmt = false;
+::color24 g_teamNadeColor{ };
+bool g_exclTeamNadeGlow[33]{ };
+
 bool g_droppedNade = false;
 bool g_droppedNadeDoArmed = false;
 bool g_droppedNadeDoSolid = false;
@@ -556,6 +566,59 @@ const char* classNameByClassIndex(int classIndex)
     default: return "Random"; /// Unknown class or no class at all.
     }
 }
+
+#if !defined (__linux__)
+#if (defined (__i386__) || defined (_M_IX86)) /// x86 Windows.
+const unsigned char* findStr /// x86 Windows.
+(::_IMAGE_DOS_HEADER* pDosHdr, ::_IMAGE_NT_HEADERS* pNtHdr, const char* pString, ::size_t Len)
+{
+    const auto pSec = IMAGE_FIRST_SECTION(pNtHdr);
+    if (!pSec)
+        return NULL;
+    ::size_t Addr;
+    unsigned long Size;
+    unsigned short Sec = false;
+    const unsigned char* pBeg, * pEnd, * pIter;
+    const auto Secs = pNtHdr->FileHeader.NumberOfSections;
+    for (; Sec < Secs; Sec++)
+    {
+        const auto& Hdr = pSec[Sec];
+        if (Hdr.Characteristics & IMAGE_SCN_MEM_EXECUTE)
+            continue;
+        Size = Hdr.Misc.VirtualSize;
+        if (Size < Len)
+            continue;
+        pBeg = (const unsigned char*)pDosHdr + Hdr.VirtualAddress;
+        pEnd = pBeg + (Size - Len);
+        for (pIter = pBeg; pIter <= pEnd; ++pIter)
+            if (*pIter == pString[0] && false == ::memcmp(pIter, pString, Len))
+            {
+                Addr = (::size_t)pIter;
+                goto keepUp;
+            }
+    }
+    return NULL;
+keepUp:
+    for (Sec = false; Sec < Secs; Sec++)
+    {
+        const auto& Hdr = pSec[Sec];
+        if (!(Hdr.Characteristics & IMAGE_SCN_MEM_EXECUTE))
+            continue;
+        Size = Hdr.Misc.VirtualSize;
+        if (Size < 5)
+            continue;
+        pBeg = (const unsigned char*)pDosHdr + Hdr.VirtualAddress;
+        pEnd = pBeg + (Size - 5);
+        for (pIter = pBeg; pIter <= pEnd; ++pIter)
+            if (*pIter == 0x68 && *(unsigned*)(pIter + true) == Addr)
+                return pIter;
+    }
+    return NULL;
+}
+#else
+#error "findStr() for x64 to be implemented!"
+#endif
+#endif
 
 bool edict_s_Ptr_From_client_s_Ptr_Offs(::size_t client_s, ::size_t& Offs, ::size_t ofsFromIncl, ::size_t ofsTo)
 {
@@ -969,10 +1032,12 @@ void DispatchKeyValue(::edict_s* pEntity, ::KeyValueData* pKvData)
     ::gpMetaGlobals->mres = ::META_RES::MRES_IGNORED;
 }
 
-int AddToFullPack_Post(::entity_state_s* pState, int eIdx, ::edict_s* pEntity, ::edict_s* pHost, int hostFlags, int isPlayer, unsigned char* pSet)
+int AddToFullPack_Post
+(::entity_state_s* pState, int eIdx, ::edict_s* pEntity, ::edict_s* pHost, int hostFlags, int isPlayer, unsigned char* pSet)
 { /// Used (attached) only if a plugin requires it.
     static unsigned char Host;
     static const char* pClass;
+    static ::edict_s* pOwner;
     if (pState && pHost && pEntity && !isPlayer)
     {
         Host = (unsigned char) ::F_EToI(pHost);
@@ -985,6 +1050,16 @@ int AddToFullPack_Post(::entity_state_s* pState, int eIdx, ::edict_s* pEntity, :
             pState->renderfx = ::g_selfNadeFx;
             pState->rendercolor = ::g_selfNadeColor;
             pState->renderamt = ::g_selfNadeAmt;
+        }
+        else if (::g_teamNade && !::g_exclTeamNadeGlow[Host] && (pOwner = pEntity->v.owner) && pHost->v.team == pOwner->v.team &&
+            false == ::_strnicmp(STRING(pEntity->v.classname), "grenade", 7))
+        {
+            if (::g_teamNadeDoSolid)
+                pState->solid = ::g_teamNadeSolid;
+            pState->rendermode = ::g_teamNadeMode;
+            pState->renderfx = ::g_teamNadeFx;
+            pState->rendercolor = ::g_teamNadeColor;
+            pState->renderamt = ::g_teamNadeAmt;
         }
         else if (::g_droppedNade && !::g_exclDroppedNadeGlow[Host])
         {
@@ -2557,6 +2632,28 @@ void CmdStart(::edict_s* pPlayer, ::usercmd_s* pCmd, ::size_t randomSeed)
     return true;
 }
 
+::cell DoD_ChangeMap_Native(::tagAMX* pAmx, ::cell* pParam)
+{
+    int Len;
+    auto pName = ::g_fn_GetAmxString(pAmx, pParam[1], false, &Len);
+    if (Len < 1 || !pName || false == *pName)
+    {
+        ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "Invalid map name string (null or empty)!");
+        return false;
+    }
+
+    switch (pParam[2])
+    {
+    case false:
+        ::g_engfuncs.pfnChangeLevel(pName, NULL);
+        break;
+    default:
+        ::g_pEngineHookTable->pfnChangeLevel(pName, NULL);
+        break;
+    }
+    return true;
+}
+
 ::cell DoD_FindSignature_Native(::tagAMX* pAmx, ::cell* pParam)
 {
     auto* pAddr = ::g_fn_GetAmxAddr(pAmx, pParam[4]);
@@ -2643,7 +2740,7 @@ void CmdStart(::edict_s* pPlayer, ::usercmd_s* pCmd, ::size_t randomSeed)
 #endif
 }
 
-::cell DoD_AddExploNadeProjGlow_Native(::tagAMX* pAmx, ::cell* pParam)
+::cell DoD_AddSelfExploNadeProjGlow_Native(::tagAMX* pAmx, ::cell* pParam)
 {
     bool Res = !::g_selfNade;
     ::g_selfNade = true;
@@ -2670,12 +2767,51 @@ void CmdStart(::edict_s* pPlayer, ::usercmd_s* pCmd, ::size_t randomSeed)
     return Res;
 }
 
-::cell DoD_DelExploNadeProjGlow_Native(::tagAMX* pAmx, ::cell* pParam)
+::cell DoD_AddTeamExploNadeProjGlow_Native(::tagAMX* pAmx, ::cell* pParam)
+{
+    bool Res = !::g_teamNade;
+    ::g_teamNade = true;
+    ::g_teamNadeMode = pParam[1];
+    ::g_teamNadeFx = pParam[2];
+    auto pColor = ::g_fn_GetAmxAddr(pAmx, pParam[3]);
+    if (pColor)
+    {
+        ::g_teamNadeColor.r = ::byte(pColor[0]);
+        ::g_teamNadeColor.g = ::byte(pColor[1]);
+        ::g_teamNadeColor.b = ::byte(pColor[2]);
+    }
+    else
+    {
+        ::g_teamNadeColor.r = ::byte(20);
+        ::g_teamNadeColor.g = ::byte(180);
+        ::g_teamNadeColor.b = ::byte(200);
+    }
+    ::g_teamNadeAmt = pParam[4];
+    ::g_teamNadeSolid = short(pParam[5]);
+    ::g_teamNadeDoSolid = bool(pParam[6]);
+    if (!::g_pFunctionTable_Post->pfnAddToFullPack)
+        ::g_pFunctionTable_Post->pfnAddToFullPack = ::AddToFullPack_Post;
+    return Res;
+}
+
+::cell DoD_DelSelfExploNadeProjGlow_Native(::tagAMX* pAmx, ::cell* pParam)
 {
     if (::g_selfNade)
     {
         ::g_selfNade = false;
-        if (!::g_droppedNade && ::g_pFunctionTable_Post->pfnAddToFullPack)
+        if (!::g_droppedNade && !::g_teamNade && ::g_pFunctionTable_Post->pfnAddToFullPack)
+            ::g_pFunctionTable_Post->pfnAddToFullPack = NULL;
+        return true;
+    }
+    return false;
+}
+
+::cell DoD_DelTeamExploNadeProjGlow_Native(::tagAMX* pAmx, ::cell* pParam)
+{
+    if (::g_teamNade)
+    {
+        ::g_teamNade = false;
+        if (!::g_droppedNade && !::g_selfNade && ::g_pFunctionTable_Post->pfnAddToFullPack)
             ::g_pFunctionTable_Post->pfnAddToFullPack = NULL;
         return true;
     }
@@ -2715,7 +2851,7 @@ void CmdStart(::edict_s* pPlayer, ::usercmd_s* pCmd, ::size_t randomSeed)
     if (::g_droppedNade)
     {
         ::g_droppedNade = false;
-        if (!::g_selfNade && ::g_pFunctionTable_Post->pfnAddToFullPack)
+        if (!::g_selfNade && !::g_teamNade && ::g_pFunctionTable_Post->pfnAddToFullPack)
             ::g_pFunctionTable_Post->pfnAddToFullPack = NULL;
         return true;
     }
@@ -2745,7 +2881,7 @@ void CmdStart(::edict_s* pPlayer, ::usercmd_s* pCmd, ::size_t randomSeed)
     return ::g_exclDroppedNadeGlow[Player];
 }
 
-::cell DoD_SetExploNadeProjGlow_Native(::tagAMX* pAmx, ::cell* pParam)
+::cell DoD_SetSelfExploNadeProjGlow_Native(::tagAMX* pAmx, ::cell* pParam)
 {
     auto Player = pParam[1];
     if (Player < 1 || Player > ::gpGlobals->maxClients)
@@ -2757,7 +2893,7 @@ void CmdStart(::edict_s* pPlayer, ::usercmd_s* pCmd, ::size_t randomSeed)
     return true;
 }
 
-::cell DoD_GetExploNadeProjGlow_Native(::tagAMX* pAmx, ::cell* pParam)
+::cell DoD_GetSelfExploNadeProjGlow_Native(::tagAMX* pAmx, ::cell* pParam)
 {
     auto Player = pParam[1];
     if (Player < 1 || Player > ::gpGlobals->maxClients)
@@ -2766,6 +2902,29 @@ void CmdStart(::edict_s* pPlayer, ::usercmd_s* pCmd, ::size_t randomSeed)
         return false;
     }
     return ::g_exclSelfNadeGlow[Player];
+}
+
+::cell DoD_SetTeamExploNadeProjGlow_Native(::tagAMX* pAmx, ::cell* pParam)
+{
+    auto Player = pParam[1];
+    if (Player < 1 || Player > ::gpGlobals->maxClients)
+    {
+        ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "Invalid player index %d!", Player);
+        return false;
+    }
+    ::g_exclTeamNadeGlow[Player] = bool(pParam[2]);
+    return true;
+}
+
+::cell DoD_GetTeamExploNadeProjGlow_Native(::tagAMX* pAmx, ::cell* pParam)
+{
+    auto Player = pParam[1];
+    if (Player < 1 || Player > ::gpGlobals->maxClients)
+    {
+        ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "Invalid player index %d!", Player);
+        return false;
+    }
+    return ::g_exclTeamNadeGlow[Player];
 }
 
 ::cell DoD_FindSymbol_Native(::tagAMX* pAmx, ::cell* pParam)
@@ -2826,6 +2985,57 @@ void CmdStart(::edict_s* pPlayer, ::usercmd_s* pCmd, ::size_t randomSeed)
     if (Addr && pAddr)
         *pAddr = Addr;
     ::dlclose(pMod);
+    return false != Addr;
+#endif
+}
+
+::cell DoD_FindStringPush_Native(::tagAMX* pAmx, ::cell* pParam)
+{
+#ifdef __linux__
+    ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "Not currently implemented on Linux!");
+    return false;
+#else
+    auto* pAddr = ::g_fn_GetAmxAddr(pAmx, pParam[3]);
+    if (pAddr)
+        *pAddr = false;
+
+    int Len;
+    auto pName = ::g_fn_GetAmxString(pAmx, pParam[1], false, &Len);
+    if (Len < 1 || !pName || false == *pName)
+    {
+        ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "Invalid module name string (null or empty)!");
+        return false;
+    }
+
+    auto pStr = ::g_fn_GetAmxString(pAmx, pParam[2], false, &Len);
+    if (Len < 1 || !pStr || false == *pStr)
+    {
+        ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "Invalid const. string (null or empty)!");
+        return false;
+    }
+
+    auto Opened = false;
+    auto pMod = ::openLib(pName, Opened);
+    if (!pMod)
+    {
+        ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "::GetModuleHandleA/ ::LoadLibraryA failed for '%s'!", pName);
+        return false;
+    }
+    ::_MEMORY_BASIC_INFORMATION memInfo{ };
+    if (!::VirtualQuery(pMod, &memInfo, sizeof memInfo) || !memInfo.AllocationBase)
+    {
+        if (Opened)
+            ::FreeLibrary(pMod);
+        ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "::VirtualQuery failed for '%s'!", pName);
+        return false;
+    }
+    auto pDosHdr = (::_IMAGE_DOS_HEADER*)memInfo.AllocationBase;
+    auto pNtHdr = (::_IMAGE_NT_HEADERS*)((::size_t)pDosHdr + (::size_t)pDosHdr->e_lfanew);
+    auto Addr = (::size_t) ::findStr(pDosHdr, pNtHdr, pStr, Len);
+    if (Addr && pAddr)
+        *pAddr = Addr;
+    if (Opened)
+        ::FreeLibrary(pMod);
     return false != Addr;
 #endif
 }
@@ -4856,6 +5066,7 @@ void DoD_Engine_EmitPings_Hook(::size_t client_s, ::size_t sizebuf_s)
 
     { "DoD_FindSignature", ::DoD_FindSignature_Native, },
     { "DoD_FindSymbol", ::DoD_FindSymbol_Native, },
+    { "DoD_FindStringPush", ::DoD_FindStringPush_Native, },
 
     { "DoD_ReadFromAddress", ::DoD_ReadFromAddress_Native, },
     { "DoD_StoreToAddress", ::DoD_StoreToAddress_Native, },
@@ -4887,10 +5098,15 @@ void DoD_Engine_EmitPings_Hook(::size_t client_s, ::size_t sizebuf_s)
     { "DoD_AddAdvancedDeploy", ::DoD_AddAdvancedDeploy_Native, },
     { "DoD_DelAdvancedDeploy", ::DoD_DelAdvancedDeploy_Native, },
 
-    { "DoD_AddExploNadeProjGlow", ::DoD_AddExploNadeProjGlow_Native, },
-    { "DoD_DelExploNadeProjGlow", ::DoD_DelExploNadeProjGlow_Native, },
-    { "DoD_SetExploNadeProjGlow", ::DoD_SetExploNadeProjGlow_Native, },
-    { "DoD_GetExploNadeProjGlow", ::DoD_GetExploNadeProjGlow_Native, },
+    { "DoD_AddSelfExploNadeProjGlow", ::DoD_AddSelfExploNadeProjGlow_Native, },
+    { "DoD_DelSelfExploNadeProjGlow", ::DoD_DelSelfExploNadeProjGlow_Native, },
+    { "DoD_SetSelfExploNadeProjGlow", ::DoD_SetSelfExploNadeProjGlow_Native, },
+    { "DoD_GetSelfExploNadeProjGlow", ::DoD_GetSelfExploNadeProjGlow_Native, },
+
+    { "DoD_AddTeamExploNadeProjGlow", ::DoD_AddTeamExploNadeProjGlow_Native, },
+    { "DoD_DelTeamExploNadeProjGlow", ::DoD_DelTeamExploNadeProjGlow_Native, },
+    { "DoD_SetTeamExploNadeProjGlow", ::DoD_SetTeamExploNadeProjGlow_Native, },
+    { "DoD_GetTeamExploNadeProjGlow", ::DoD_GetTeamExploNadeProjGlow_Native, },
 
     { "DoD_AddDroppedExploNadeGlow", ::DoD_AddDroppedExploNadeGlow_Native, },
     { "DoD_DelDroppedExploNadeGlow", ::DoD_DelDroppedExploNadeGlow_Native, },
@@ -4934,6 +5150,7 @@ void DoD_Engine_EmitPings_Hook(::size_t client_s, ::size_t sizebuf_s)
     { "DoD_BlockToPlayerCollision", ::DoD_BlockToPlayerCollision_Native, },
     { "DoD_UnblockFromPlayerCollision", ::DoD_UnblockFromPlayerCollision_Native, },
 
+    { "DoD_ChangeMap", ::DoD_ChangeMap_Native, },
     { "DoD_DeployItem", ::DoD_DeployItem_Native, },
     { "DoD_AllocString", ::DoD_AllocString_Native, },
     { "DoD_AreGameRulesReady", ::DoD_AreGameRulesReady_Native, },
@@ -5016,10 +5233,33 @@ bool ReadConfig(bool ForLinux)
 
 void OnAmxxAttach()
 {
+    const auto Beg = double(::clock());
 #ifndef __linux__
     if (!::ReadConfig(false))
     {
         ::g_fn_AddNatives(::DoDHacks_Natives);
+
+        char Msg[128];
+#ifdef __AVX2__
+#ifndef __linux__
+        ::_snprintf_s(Msg, sizeof Msg, _TRUNCATE, "[INFO] " MODULE_NAME " took %f sec. to load (AVX2).\n", float((double(::clock()) - Beg) / double(CLOCKS_PER_SEC)));
+#else
+        ::_snprintf(Msg, sizeof Msg, "[INFO] " MODULE_NAME " took %f sec. to load (AVX2).\n", float((double(::clock()) - Beg) / double(CLOCKS_PER_SEC)));
+#endif
+#elif defined (__AVX__)
+#ifndef __linux__
+        ::_snprintf_s(Msg, sizeof Msg, _TRUNCATE, "[INFO] " MODULE_NAME " took %f sec. to load (AVX).\n", float((double(::clock()) - Beg) / double(CLOCKS_PER_SEC)));
+#else
+        ::_snprintf(Msg, sizeof Msg, "[INFO] " MODULE_NAME " took %f sec. to load (AVX).\n", float((double(::clock()) - Beg) / double(CLOCKS_PER_SEC)));
+#endif
+#else
+#ifndef __linux__
+        ::_snprintf_s(Msg, sizeof Msg, _TRUNCATE, "[INFO] " MODULE_NAME " took %f sec. to load (SSE).\n", float((double(::clock()) - Beg) / double(CLOCKS_PER_SEC)));
+#else
+        ::_snprintf(Msg, sizeof Msg, "[INFO] " MODULE_NAME " took %f sec. to load (SSE).\n", float((double(::clock()) - Beg) / double(CLOCKS_PER_SEC)));
+#endif
+#endif
+        ::g_engfuncs.pfnServerPrint(Msg);
         return;
     }
 
@@ -5186,6 +5426,28 @@ void OnAmxxAttach()
     {
         ::MF_Log("::GetModuleHandleA/ ::LoadLibraryA failed! Use with caution!");
         ::g_fn_AddNatives(::DoDHacks_Natives);
+
+        char Msg[128];
+#ifdef __AVX2__
+#ifndef __linux__
+        ::_snprintf_s(Msg, sizeof Msg, _TRUNCATE, "[INFO] " MODULE_NAME " took %f sec. to load (AVX2).\n", float((double(::clock()) - Beg) / double(CLOCKS_PER_SEC)));
+#else
+        ::_snprintf(Msg, sizeof Msg, "[INFO] " MODULE_NAME " took %f sec. to load (AVX2).\n", float((double(::clock()) - Beg) / double(CLOCKS_PER_SEC)));
+#endif
+#elif defined (__AVX__)
+#ifndef __linux__
+        ::_snprintf_s(Msg, sizeof Msg, _TRUNCATE, "[INFO] " MODULE_NAME " took %f sec. to load (AVX).\n", float((double(::clock()) - Beg) / double(CLOCKS_PER_SEC)));
+#else
+        ::_snprintf(Msg, sizeof Msg, "[INFO] " MODULE_NAME " took %f sec. to load (AVX).\n", float((double(::clock()) - Beg) / double(CLOCKS_PER_SEC)));
+#endif
+#else
+#ifndef __linux__
+        ::_snprintf_s(Msg, sizeof Msg, _TRUNCATE, "[INFO] " MODULE_NAME " took %f sec. to load (SSE).\n", float((double(::clock()) - Beg) / double(CLOCKS_PER_SEC)));
+#else
+        ::_snprintf(Msg, sizeof Msg, "[INFO] " MODULE_NAME " took %f sec. to load (SSE).\n", float((double(::clock()) - Beg) / double(CLOCKS_PER_SEC)));
+#endif
+#endif
+        ::g_engfuncs.pfnServerPrint(Msg);
         return;
     }
 
@@ -5194,6 +5456,28 @@ void OnAmxxAttach()
     {
         ::MF_Log("::VirtualQuery failed!");
         ::g_fn_AddNatives(::DoDHacks_Natives);
+
+        char Msg[128];
+#ifdef __AVX2__
+#ifndef __linux__
+        ::_snprintf_s(Msg, sizeof Msg, _TRUNCATE, "[INFO] " MODULE_NAME " took %f sec. to load (AVX2).\n", float((double(::clock()) - Beg) / double(CLOCKS_PER_SEC)));
+#else
+        ::_snprintf(Msg, sizeof Msg, "[INFO] " MODULE_NAME " took %f sec. to load (AVX2).\n", float((double(::clock()) - Beg) / double(CLOCKS_PER_SEC)));
+#endif
+#elif defined (__AVX__)
+#ifndef __linux__
+        ::_snprintf_s(Msg, sizeof Msg, _TRUNCATE, "[INFO] " MODULE_NAME " took %f sec. to load (AVX).\n", float((double(::clock()) - Beg) / double(CLOCKS_PER_SEC)));
+#else
+        ::_snprintf(Msg, sizeof Msg, "[INFO] " MODULE_NAME " took %f sec. to load (AVX).\n", float((double(::clock()) - Beg) / double(CLOCKS_PER_SEC)));
+#endif
+#else
+#ifndef __linux__
+        ::_snprintf_s(Msg, sizeof Msg, _TRUNCATE, "[INFO] " MODULE_NAME " took %f sec. to load (SSE).\n", float((double(::clock()) - Beg) / double(CLOCKS_PER_SEC)));
+#else
+        ::_snprintf(Msg, sizeof Msg, "[INFO] " MODULE_NAME " took %f sec. to load (SSE).\n", float((double(::clock()) - Beg) / double(CLOCKS_PER_SEC)));
+#endif
+#endif
+        ::g_engfuncs.pfnServerPrint(Msg);
         if (Opened)
             ::FreeLibrary(pDoD);
         return;
@@ -5439,6 +5723,28 @@ void OnAmxxAttach()
     if (!::ReadConfig(true))
     {
         ::g_fn_AddNatives(::DoDHacks_Natives);
+
+        char Msg[128];
+#ifdef __AVX2__
+#ifndef __linux__
+        ::_snprintf_s(Msg, sizeof Msg, _TRUNCATE, "[INFO] " MODULE_NAME " took %f sec. to load (AVX2).\n", float((double(::clock()) - Beg) / double(CLOCKS_PER_SEC)));
+#else
+        ::_snprintf(Msg, sizeof Msg, "[INFO] " MODULE_NAME " took %f sec. to load (AVX2).\n", float((double(::clock()) - Beg) / double(CLOCKS_PER_SEC)));
+#endif
+#elif defined (__AVX__)
+#ifndef __linux__
+        ::_snprintf_s(Msg, sizeof Msg, _TRUNCATE, "[INFO] " MODULE_NAME " took %f sec. to load (AVX).\n", float((double(::clock()) - Beg) / double(CLOCKS_PER_SEC)));
+#else
+        ::_snprintf(Msg, sizeof Msg, "[INFO] " MODULE_NAME " took %f sec. to load (AVX).\n", float((double(::clock()) - Beg) / double(CLOCKS_PER_SEC)));
+#endif
+#else
+#ifndef __linux__
+        ::_snprintf_s(Msg, sizeof Msg, _TRUNCATE, "[INFO] " MODULE_NAME " took %f sec. to load (SSE).\n", float((double(::clock()) - Beg) / double(CLOCKS_PER_SEC)));
+#else
+        ::_snprintf(Msg, sizeof Msg, "[INFO] " MODULE_NAME " took %f sec. to load (SSE).\n", float((double(::clock()) - Beg) / double(CLOCKS_PER_SEC)));
+#endif
+#endif
+        ::g_engfuncs.pfnServerPrint(Msg);
         return;
     }
 
@@ -5639,6 +5945,28 @@ void OnAmxxAttach()
                 {
                     ::MF_Log("::dlopen failed! Use with caution!");
                     ::g_fn_AddNatives(::DoDHacks_Natives);
+
+                    char Msg[128];
+#ifdef __AVX2__
+#ifndef __linux__
+                    ::_snprintf_s(Msg, sizeof Msg, _TRUNCATE, "[INFO] " MODULE_NAME " took %f sec. to load (AVX2).\n", float((double(::clock()) - Beg) / double(CLOCKS_PER_SEC)));
+#else
+                    ::_snprintf(Msg, sizeof Msg, "[INFO] " MODULE_NAME " took %f sec. to load (AVX2).\n", float((double(::clock()) - Beg) / double(CLOCKS_PER_SEC)));
+#endif
+#elif defined (__AVX__)
+#ifndef __linux__
+                    ::_snprintf_s(Msg, sizeof Msg, _TRUNCATE, "[INFO] " MODULE_NAME " took %f sec. to load (AVX).\n", float((double(::clock()) - Beg) / double(CLOCKS_PER_SEC)));
+#else
+                    ::_snprintf(Msg, sizeof Msg, "[INFO] " MODULE_NAME " took %f sec. to load (AVX).\n", float((double(::clock()) - Beg) / double(CLOCKS_PER_SEC)));
+#endif
+#else
+#ifndef __linux__
+                    ::_snprintf_s(Msg, sizeof Msg, _TRUNCATE, "[INFO] " MODULE_NAME " took %f sec. to load (SSE).\n", float((double(::clock()) - Beg) / double(CLOCKS_PER_SEC)));
+#else
+                    ::_snprintf(Msg, sizeof Msg, "[INFO] " MODULE_NAME " took %f sec. to load (SSE).\n", float((double(::clock()) - Beg) / double(CLOCKS_PER_SEC)));
+#endif
+#endif
+                    ::g_engfuncs.pfnServerPrint(Msg);
                     return;
                 }
             }
@@ -5652,6 +5980,28 @@ void OnAmxxAttach()
         ::MF_Log("::stat failed!");
         ::dlclose(pDoD);
         ::g_fn_AddNatives(::DoDHacks_Natives);
+
+        char Msg[128];
+#ifdef __AVX2__
+#ifndef __linux__
+        ::_snprintf_s(Msg, sizeof Msg, _TRUNCATE, "[INFO] " MODULE_NAME " took %f sec. to load (AVX2).\n", float((double(::clock()) - Beg) / double(CLOCKS_PER_SEC)));
+#else
+        ::_snprintf(Msg, sizeof Msg, "[INFO] " MODULE_NAME " took %f sec. to load (AVX2).\n", float((double(::clock()) - Beg) / double(CLOCKS_PER_SEC)));
+#endif
+#elif defined (__AVX__)
+#ifndef __linux__
+        ::_snprintf_s(Msg, sizeof Msg, _TRUNCATE, "[INFO] " MODULE_NAME " took %f sec. to load (AVX).\n", float((double(::clock()) - Beg) / double(CLOCKS_PER_SEC)));
+#else
+        ::_snprintf(Msg, sizeof Msg, "[INFO] " MODULE_NAME " took %f sec. to load (AVX).\n", float((double(::clock()) - Beg) / double(CLOCKS_PER_SEC)));
+#endif
+#else
+#ifndef __linux__
+        ::_snprintf_s(Msg, sizeof Msg, _TRUNCATE, "[INFO] " MODULE_NAME " took %f sec. to load (SSE).\n", float((double(::clock()) - Beg) / double(CLOCKS_PER_SEC)));
+#else
+        ::_snprintf(Msg, sizeof Msg, "[INFO] " MODULE_NAME " took %f sec. to load (SSE).\n", float((double(::clock()) - Beg) / double(CLOCKS_PER_SEC)));
+#endif
+#endif
+        ::g_engfuncs.pfnServerPrint(Msg);
         return;
     }
 
@@ -5952,6 +6302,28 @@ void OnAmxxAttach()
 #endif
 
     ::g_fn_AddNatives(::DoDHacks_Natives);
+
+    char Msg[128];
+#ifdef __AVX2__
+#ifndef __linux__
+    ::_snprintf_s(Msg, sizeof Msg, _TRUNCATE, "[INFO] " MODULE_NAME " took %f sec. to load (AVX2).\n", float((double(::clock()) - Beg) / double(CLOCKS_PER_SEC)));
+#else
+    ::_snprintf(Msg, sizeof Msg, "[INFO] " MODULE_NAME " took %f sec. to load (AVX2).\n", float((double(::clock()) - Beg) / double(CLOCKS_PER_SEC)));
+#endif
+#elif defined (__AVX__)
+#ifndef __linux__
+    ::_snprintf_s(Msg, sizeof Msg, _TRUNCATE, "[INFO] " MODULE_NAME " took %f sec. to load (AVX).\n", float((double(::clock()) - Beg) / double(CLOCKS_PER_SEC)));
+#else
+    ::_snprintf(Msg, sizeof Msg, "[INFO] " MODULE_NAME " took %f sec. to load (AVX).\n", float((double(::clock()) - Beg) / double(CLOCKS_PER_SEC)));
+#endif
+#else
+#ifndef __linux__
+    ::_snprintf_s(Msg, sizeof Msg, _TRUNCATE, "[INFO] " MODULE_NAME " took %f sec. to load (SSE).\n", float((double(::clock()) - Beg) / double(CLOCKS_PER_SEC)));
+#else
+    ::_snprintf(Msg, sizeof Msg, "[INFO] " MODULE_NAME " took %f sec. to load (SSE).\n", float((double(::clock()) - Beg) / double(CLOCKS_PER_SEC)));
+#endif
+#endif
+    ::g_engfuncs.pfnServerPrint(Msg);
 }
 
 void OnAmxxDetach()

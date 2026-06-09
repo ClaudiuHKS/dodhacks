@@ -2,9 +2,17 @@
 #ifndef __MODULECONFIG_H__
 #define __MODULECONFIG_H__
 
+#if defined (__AVX2__) && !defined (__avx2__)
+#define __avx2__ 1
+#endif
+
+#if defined (__AVX__) && !defined (__avx__)
+#define __avx__ 1
+#endif
+
 #define MODULE_NAME         "DoD Hacks"
-#define MODULE_VERSION      "1.0.0.7"
-#define MODULE_VERSION_MS   1,0,0,7
+#define MODULE_VERSION      "1.0.0.8"
+#define MODULE_VERSION_MS   1,0,0,8
 #define MODULE_YEAR_MS      "2026"
 #define MODULE_AUTHOR       "Hattrick HKS (claudiuhks)"
 #define MODULE_URL          "https://forums.alliedmods.net/"

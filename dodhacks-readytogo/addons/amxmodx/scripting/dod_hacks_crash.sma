@@ -11,9 +11,13 @@ new Array: g_playerNotifications[33] = { Invalid_Array, ... };
 new Float: g_minNotifySeconds;
 new Float: g_maxNotifySeconds;
 
+#if !defined FindPlayerFlags
+new g_maxPlayers;
+#endif
+
 public plugin_init()
 {
-    register_plugin("DoD Hacks: Crash", "1.0.0.7", "Hattrick HKS (claudiuhks)");
+    register_plugin("DoD Hacks: Crash", "1.0.0.8", "Hattrick HKS (claudiuhks)");
 
     new Buffer[256];
     get_configsdir(Buffer, charsmax(Buffer));
@@ -21,7 +25,8 @@ public plugin_init()
     new Config = fopen(Buffer, "r");
     if (!Config)
     {
-        set_fail_state("Error opening '%s'!", Buffer);
+        log_amx("Error opening '%s'!", Buffer);
+        set_fail_state("Error opening plugin specific cfg. file!");
         return PLUGIN_HANDLED;
     }
 
@@ -38,6 +43,10 @@ public plugin_init()
             g_maxNotifySeconds = str_to_float(Val);
     }
     fclose(Config);
+
+#if !defined FindPlayerFlags
+    g_maxPlayers = get_maxplayers();
+#endif
     return PLUGIN_CONTINUE;
 }
 

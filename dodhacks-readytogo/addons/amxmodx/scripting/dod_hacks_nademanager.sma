@@ -22,6 +22,10 @@
 /// mysql is better than sqlite with up to 10%.
 ///
 
+#if !defined DMG_GRENADE
+#define      DMG_GRENADE (1 << 24)
+#endif
+
 #if !defined _dod_hacks_knives_included /// Works without this too.
 native bool: DoD_IsUserWaitingThrowingKnife(Player);
 #endif
@@ -97,22 +101,25 @@ new Float: g_hudHorPosImpa; /// Horizontal position of the HUD msg. managed by '
 new Float: g_hudVerPosImpaCmd; /// Vertical position of the HUD msg. related to on-impact explo. nade proj. deton. client cmd.
 new Float: g_hudHorPosImpaCmd; /// Horizontal position of the HUD msg. related to on-impact explo. nade proj. deton. client cmd.
 new Handle: g_Sql; /// Threaded database storage. (**)
+new Handle: g_sqlCon = Empty_Handle; /// A temporary non-threaded database connection handle. (**)
+new bool: g_initiallyConnected = false; /// Whether SQL server was online during plugin's plugin_init() call (SQLite is always online). (**)
 
 public plugin_init()
 {
-    register_plugin("DoD Hacks: Nade Manager", "1.0.0.7", "Hattrick HKS (claudiuhks)");
+    register_plugin("DoD Hacks: Nade Manager", "1.0.0.8", "Hattrick HKS (claudiuhks)");
 
     get_configsdir(g_Buffer, charsmax(g_Buffer));
     add(g_Buffer, charsmax(g_Buffer), "/dod_hacks_nademanager.ini");
     new Config = fopen(g_Buffer, "r");
     if (!Config)
     {
-        set_fail_state("Error opening '%s'!", g_Buffer);
+        log_amx("Error opening '%s'!", g_Buffer);
+        set_fail_state("Error opening plugin specific cfg. file!");
         return PLUGIN_HANDLED;
     }
 
     new Key[32], Val[32], Drv[32], Host[32], User[32], Pass[32], Db[32], bool: eraseOnNewRound,
-        bool: allowGlow, bool: allowDroppedGlow;
+        bool: allowSelfGlow, bool: allowTeamGlow, bool: allowDroppedGlow, Err[4], errCode;
     while (fgets(Config, g_Buffer, charsmax(g_Buffer)) > 0)
     {
         trim(g_Buffer);
@@ -175,8 +182,10 @@ public plugin_init()
             g_hideChatCmd = bool: str_to_num(Val);
         else if (equali(Key, "@force_knife"))
             g_forceKnife = bool: str_to_num(Val);
-        else if (equali(Key, "@allow_glow"))
-            allowGlow = bool: str_to_num(Val);
+        else if (equali(Key, "@allow_self_glow"))
+            allowSelfGlow = bool: str_to_num(Val);
+        else if (equali(Key, "@allow_team_glow"))
+            allowTeamGlow = bool: str_to_num(Val);
         else if (equali(Key, "@allow_dropped_glow"))
             allowDroppedGlow = bool: str_to_num(Val);
         else if (equali(Key, "@db_driver"))
@@ -232,16 +241,41 @@ public plugin_init()
         g_syncImpa = CreateHudSyncObj();
         SQL_GetAffinity(g_Buffer, charsmax(g_Buffer));
         if (!equali(g_Buffer, Drv))
-            SQL_SetAffinity(Drv);
-        g_Sql = SQL_MakeDbTuple(Host, User, Pass, Db);
-        if (Empty_Handle != g_Sql)
+            if (!SQL_SetAffinity(Drv))
+            {
+                log_amx("SQL_SetAffinity('%s') call failed. Ensure the module is enabled in '../amxmodx/configs/modules.ini'.",
+                    Drv);
+                log_amx("Nade Manager plugin may work without SQL stuff if 'on-impact explo. nade proj. deton.' feature is off.");
+            }
+        g_Sql = SQL_MakeDbTuple(Host, User, Pass, Db, 3);
+        g_sqlCon = SQL_Connect(g_Sql, errCode, Err, charsmax(Err)); /// Connect just to see whether server is up or down.
+        if (Empty_Handle != g_sqlCon)
         {
+            g_initiallyConnected = true;
+            SQL_FreeHandle(g_sqlCon); /// If server is up, immediately shut down the non-threaded SQL database connection.
+            g_sqlCon = Empty_Handle;
             if (g_isStorageLocal)
                 SQL_ThreadQuery(g_Sql, "EmptySqlHandler",
-                    "create table if not exists insta_nades (setting tinyint, steam character(32) unique)");
+                    "CREATE TABLE IF NOT EXISTS insta_nades (setting TINYINT NOT NULL, steam CHARACTER (32) NOT NULL UNIQUE COLLATE NOCASE, PRIMARY KEY (steam), UNIQUE (steam))");
             else
                 SQL_ThreadQuery(g_Sql, "EmptySqlHandler",
-                    "create table if not exists insta_nades (setting int(4), steam varchar(32) unique)");
+                    "CREATE TABLE IF NOT EXISTS insta_nades (setting TINYINT NOT NULL, steam CHAR (32) NOT NULL COLLATE utf8mb4_unicode_520_ci, PRIMARY KEY (steam), UNIQUE (steam)) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_520_ci");
+        }
+        else
+        {
+            if (!safeIsSqlModuleRunning("sqlite") && !safeIsSqlModuleRunning("mysql"))
+            {
+                log_amx("'../amxmodx/configs/modules.ini' needs either sqlite or mysql enabled!");
+                log_amx("Nade Manager plugin may work without SQL stuff if 'on-impact explo. nade proj. deton.' feature is off.");
+            }
+            else
+            {
+                log_amx("Nade Manager plugin loaded with MySQL server being offline.");
+                log_amx("As soon as the connection establishes, map will restart automatically.");
+                log_amx("If you are using SQLite, 'sqlite' module needs to be enabled in '../amxmodx/configs/modules.ini'.");
+                log_amx("Nade Manager plugin may work without SQL stuff if 'on-impact explo. nade proj. deton.' feature is off.");
+                set_task(0.1, "Task_VerifyConnection");
+            }
         }
     }
     if (g_maxDrop)
@@ -264,11 +298,38 @@ public plugin_init()
         set_task(1.0, "Task_RemoveDroppedExploNades", .flags = "b");
     }
     g_maxPlayers = get_maxplayers();
-    if (allowGlow)
-        DoD_AddExploNadeProjGlow   (      kRenderNormal, kRenderFxGlowShell, { 20, 180, 200 }, 5, SOLID_NOT, true);
+    if (allowSelfGlow)
+        DoD_AddSelfExploNadeProjGlow(      kRenderNormal, kRenderFxGlowShell,
+            {  20, 180, 200 } /** L. blue. */, 5, SOLID_NOT, true);
+    if (allowTeamGlow)
+        DoD_AddTeamExploNadeProjGlow(      kRenderNormal, kRenderFxGlowShell,
+            { 200, 160,  20 }  /** Yellow. */, 5, SOLID_NOT, true);
     if (allowDroppedGlow)
-        DoD_AddDroppedExploNadeGlow(true, kRenderNormal, kRenderFxGlowShell, { 20, 200, 40  }, 5, SOLID_NOT, true);
+        DoD_AddDroppedExploNadeGlow (true, kRenderNormal, kRenderFxGlowShell,
+            {  20, 200,  40 }   /** Green. */, 5, SOLID_NOT, true);
     return PLUGIN_CONTINUE;
+}
+
+public Task_VerifyConnection()
+{
+    static Map[64], errCode, Err[4];
+    g_sqlCon = SQL_Connect(g_Sql, errCode, Err, charsmax(Err));
+    if (Empty_Handle != g_sqlCon)
+    {
+        SQL_FreeHandle(g_sqlCon);
+        get_mapname(Map, charsmax(Map));
+#if defined engine_changelevel
+        engine_changelevel(Map);
+#else
+#if defined NULL_STRING
+        engfunc(EngFunc_ChangeLevel, Map, NULL_STRING);
+#else
+        DoD_ChangeMap(Map);
+#endif
+#endif
+    }
+    else
+        set_task(0.1, "Task_VerifyConnection");
 }
 
 public OnExploNadeCanDeploy_Pre(Entity)
@@ -332,18 +393,18 @@ public client_authorized(Player)
         return PLUGIN_CONTINUE; /// Skip if feature disabled.
 #endif
     g_isAuthenticated[Player] = true;
-    if (copy(g_Steam[Player], charsmax(g_Steam[]), Steam) > 4 && Empty_Handle != g_Sql)
+    if (copy(g_Steam[Player], charsmax(g_Steam[]), Steam) > 4 && g_initiallyConnected)
     { /// Skipping fake players (long enough Steam string).
-        formatex(g_Buffer, charsmax(g_Buffer), "select setting from insta_nades where steam = '%s'", Steam);
+        formatex(g_Buffer, charsmax(g_Buffer), "SELECT setting FROM insta_nades WHERE steam = '%s'", Steam);
         num_to_str(get_user_userid(Player), Info, charsmax(Info));
         SQL_ThreadQuery(g_Sql, "OnSqlSelection", g_Buffer, Info, sizeof Info);
     }
     return PLUGIN_CONTINUE;
 }
 
-public EmptySqlHandler()
-{ /// Not expecting an answer.
-}
+public EmptySqlHandler(FailState, Handle: Query, const Error[], ErrorNum) /// Not expecting an answer.
+    if (TQUERY_QUERY_FAILED == FailState)
+        log_amx("SQL Error (#%d): %s", ErrorNum, Error);
 
 public OnNadeThink_Post(Nade) /// To not block carrier's death animation.
     if (ArrayFindValue(g_arrayNades, Nade) > -1)
@@ -574,15 +635,15 @@ public client_putinserver(Player)
 
 public DOD_ON_PLAYER_DISCONNECTED
 {
-    if (g_impaNades && Empty_Handle != g_Sql && false == g_isFakePlayer[Player] && g_isAuthenticated[Player])
+    if (g_impaNades && g_initiallyConnected && false == g_isFakePlayer[Player] && g_isAuthenticated[Player])
     { /// Store the selection.
         if (g_isStorageLocal)
             formatex(g_Buffer, charsmax(g_Buffer),
-                "insert into insta_nades values (%d, '%s') on conflict (steam) do update set setting = %d",
+                "INSERT INTO insta_nades VALUES (%d, '%s') ON CONFLICT (steam) DO UPDATE SET setting = %d",
                 g_usingImpa[Player], g_Steam[Player], g_usingImpa[Player]);
         else
             formatex(g_Buffer, charsmax(g_Buffer),
-                "insert into insta_nades values (%d, '%s') on duplicate key update setting = %d",
+                "INSERT INTO insta_nades VALUES (%d, '%s') ON DUPLICATE KEY UPDATE setting = %d",
                 g_usingImpa[Player], g_Steam[Player], g_usingImpa[Player]);
 
         SQL_ThreadQuery(g_Sql, "EmptySqlHandler", g_Buffer);
@@ -638,7 +699,7 @@ public DoD_OnRemoveAllItems(Player, &RemoveSuit)
     g_playerNade[Player] = 0;
 
 #if defined FindPlayerFlags
-public OnSqlSelection(FailState, Handle: Query, Error[], ErrorNum, Data[])
+public OnSqlSelection(FailState, Handle: Query, const Error[], ErrorNum, const Data[])
 {
     static Player;
     if (Query != Empty_Handle && SQL_NumResults(Query) > 0)
@@ -649,7 +710,7 @@ public OnSqlSelection(FailState, Handle: Query, Error[], ErrorNum, Data[])
     }
 }
 #else
-public OnSqlSelection(FailState, Handle: Query, Error[], ErrorNum, Data[])
+public OnSqlSelection(FailState, Handle: Query, const Error[], ErrorNum, const Data[])
 {
     static UniqueIndex, Player;
     if (Query != Empty_Handle && SQL_NumResults(Query) > 0)
@@ -886,7 +947,8 @@ dropExploNade(Player, const Class[])
     Angles[0] = 0.0;
     Angles[2] = 0.0;
     g_isInDrop = true; /// Catch engine's CreateNamedEntity() before AddEntityHashValue() and DispatchSpawn(), to ensure the dropped explo. nade won't respawn later.
-    if (DoD_Create(Class, Origin, Angles, -1 /** no owner, as it might play an audio sound during drop otherwise */, Nade) && Nade > g_maxPlayers)
+    if (DoD_Create(Class, Origin, Angles, -1 /** no owner, as it might play an audio sound during drop otherwise */, Nade) &&
+        Nade > g_maxPlayers)
     { /// DoD_Create() calls engine's CreateNamedEntity().
         Flag = !(g_adjusStep[Player] % 2);
         pev(Player, pev_velocity, Velocity);
@@ -929,3 +991,36 @@ bool: findAliveNadeOwnerByUnownedNade(Nade)
             return true;
     return false;
 }
+
+bool: safeIsSqlModuleRunning(const Name[])
+{
+    new Buffer[256];
+    get_localinfo("amxx_modules", Buffer, charsmax(Buffer));
+    new File = fopen(Buffer, "r");
+    if (!File)
+        return false;
+    new Len = strlen(Name);
+    while (fgets(File, Buffer, charsmax(Buffer)))
+    {
+        trim(Buffer);
+        if (equali(Buffer, Name, Len))
+        {
+            fclose(File);
+            return true;
+        }
+    }
+    fclose(File);
+    return false;
+}
+
+#if !defined ArrayResize
+ArrayFindValue(Array: Which, Value)
+{
+    static Iter, Size;
+    Size = ArraySize(Which);
+    for (Iter = 0; Iter < Size; Iter++)
+        if (Value == ArrayGetCell(Which, Iter))
+            return Iter;
+    return -1;
+}
+#endif

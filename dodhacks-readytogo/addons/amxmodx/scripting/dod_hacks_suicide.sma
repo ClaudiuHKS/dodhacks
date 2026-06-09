@@ -8,7 +8,7 @@ new bool: g_isBetweenRounds = true;
 
 public plugin_init()
 {
-    register_plugin("DoD Hacks: Suicide", "1.0.0.7", "claudiuhks (Hattrick HKS)");
+    register_plugin("DoD Hacks: Suicide", "1.0.0.8", "Hattrick HKS (claudiuhks)");
 
     new Buffer[256];
     get_configsdir(Buffer, charsmax(Buffer));
@@ -16,7 +16,8 @@ public plugin_init()
     new Config = fopen(Buffer, "r");
     if (!Config)
     {
-        set_fail_state("Error opening '%s'!", Buffer);
+        log_amx("Error opening '%s'!", Buffer);
+        set_fail_state("Error opening plugin specific cfg. file!");
         return PLUGIN_HANDLED;
     }
 

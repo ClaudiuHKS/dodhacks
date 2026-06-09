@@ -7,6 +7,10 @@
 #tryinclude <dodhacks>          /** When players type "nextmap" into their console, show them the correct result. Works without this too. */
 #tryinclude <dod_hacks_suicide> /// Works without this as well.
 
+#if !defined MEXIT_FORCE || !defined SortADTArray || !defined MPROP_PAGE_CALLBACK
+#error AMX Mod X version too old to handle dod_hacks_mapchooser plugin! Consider upgrading! ('SortADTArray()', 'MEXIT_FORCE' & 'MPROP_PAGE_CALLBACK' are needed ...)
+#endif
+
 #if defined _dodhacks_included /** When players type "nextmap" into their console, show them the correct result. */
     #define CDoDTeamPlay_sNextMap_32Cells   488 /** 'char CDoDTeamPlay::sNextMap[32]' variable. */
 #endif
@@ -36,7 +40,7 @@ enum unsigned: Map_T {
 /** Votes, Name, Nominations and Nominators are reserved words. Do not use these to declare new variables. */
 
 new g_maxPlayers;
-new g_loadedMaps;
+new g_loadedMaps = 0;
 new g_knownDecisionVotes = 0;
 new g_secBeforeVoteToAnnounce;
 new g_playersDuringEndOfMapVote;
@@ -60,11 +64,11 @@ new g_hookPlayerPreThink_Post;
 new g_hookPlayerPostThink_Post;
 new g_hookUpdateClientData_Post;
 #if defined hook_cvar_change
-new cvarhook: g_hookAmxNextMapConVarChange;
-new cvarhook: g_hookMpTimeLimitConVarChange;
+new cvarhook: g_hookAmxNextMapConVarChange = cvarhook: -1;
+new cvarhook: g_hookMpTimeLimitConVarChange = cvarhook: -1;
 #endif
-new g_cvarAmxNextMap;
-new g_cvarMultiPlayerTimeLimit;
+new g_cvarAmxNextMap = 0;
+new g_cvarMultiPlayerTimeLimit = 0;
 new g_wordToBeDecided[32];
 new g_wordActualMapExtensionSuffix[32];
 new g_nominationsMenuPlayerPage[33];
@@ -113,15 +117,32 @@ new Array: g_arrayMapsDecision;
 
 public plugin_init()
 {
-    register_plugin("DoD Hacks: Map Chooser", "1.0.0.7", "Hattrick HKS (claudiuhks)");
+    register_plugin("DoD Hacks: Map Chooser", "1.0.0.8", "Hattrick HKS (claudiuhks)");
 
+    if (safeDisablePluginIfRunning("DoD.Hacks.MapChooser.LOG", "mapchooser.amxx") ||
+        safeDisablePluginIfRunning("DoD.Hacks.MapChooser.LOG", "galileo.amxx"))
+    {
+        new Map[64];
+        get_mapname(Map, charsmax(Map));
+#if defined engine_changelevel
+        engine_changelevel(Map);
+#else
+#if defined NULL_STRING
+        engfunc(EngFunc_ChangeLevel, Map, NULL_STRING);
+#else
+        DoD_ChangeMap(Map);
+#endif
+#endif
+        return PLUGIN_HANDLED;
+    }
     new Buffer[256];
     get_configsdir(Buffer, charsmax(Buffer));
     add(Buffer, charsmax(Buffer), "/dod_hacks_mapchooser.ini");
     new Config = fopen(Buffer, "r");
     if (!Config)
     {
-        set_fail_state("Error opening '%s'!", Buffer);
+        log_amx("Error opening '%s'!", Buffer);
+        set_fail_state("Error opening plugin specific cfg. file!");
         return PLUGIN_HANDLED;
     }
 
@@ -365,7 +386,8 @@ public plugin_end()
         ArrayDestroy(Map[Nominators]);
     } /// AMX Mod X will surely free the remaining stuff (mainly arrays and menus).
 #if defined hook_cvar_change
-    disable_cvar_hook(g_hookMpTimeLimitConVarChange);
+    if (cvarhook: -1 != g_hookMpTimeLimitConVarChange)
+        disable_cvar_hook(g_hookMpTimeLimitConVarChange);
 #endif
     if (g_loadMpTimeLimitFromServerCfg)
     {
@@ -373,9 +395,11 @@ public plugin_end()
         if (tryLoadMapMinutesFromServerCfg(Mins))
             g_establishedDefaultMapMinutes = Mins;
     }
-    set_pcvar_float(g_cvarMultiPlayerTimeLimit, g_establishedDefaultMapMinutes); /// Restore default map time limit in minutes.
+    if (g_cvarMultiPlayerTimeLimit)
+        set_pcvar_float(g_cvarMultiPlayerTimeLimit, g_establishedDefaultMapMinutes); /// Restore default map time limit in minutes.
 #if defined hook_cvar_change
-    enable_cvar_hook(g_hookMpTimeLimitConVarChange);
+    if (cvarhook: -1 != g_hookMpTimeLimitConVarChange)
+        enable_cvar_hook(g_hookMpTimeLimitConVarChange);
 #endif
 }
 
@@ -1593,3 +1617,105 @@ bool: tryLoadMapMinutesFromServerCfg(&Float: Mins)
     fclose(Config);
     return false;
 }
+
+bool: safeDisablePluginIfRunning(const logFile[], const pluginFileName[] /** 'Name' is a reserved word in this plugin. */)
+{
+    new Buffer[256];
+    get_localinfo("amxx_plugins", Buffer, charsmax(Buffer));
+    new File = fopen(Buffer, "r");
+    if (!File)
+        return false;
+    new newName[256];
+    new nameLen = copy(newName, charsmax(newName), pluginFileName);
+#if defined mb_strtolower
+    nameLen = mb_strtolower(newName, nameLen);
+#else
+    nameLen = strtolower(newName);
+#endif
+    new Array: Lines = ArrayCreate(256), Trimmed[256], bool: bExists, Size;
+    while (fgets(File, Buffer, charsmax(Buffer)))
+    {
+        copy(Trimmed, charsmax(Trimmed), Buffer);
+        trim(Trimmed);
+        if (equali(Trimmed, newName, nameLen))
+        {
+            bExists = true;
+#if defined replace_stringex
+            new trimmedLen = formatex(Trimmed, charsmax(Trimmed), ";%s", newName);
+            replace_stringex(Buffer, charsmax(Buffer), newName, Trimmed, nameLen, trimmedLen, false);
+#else
+            formatex(Trimmed, charsmax(Trimmed), ";%s", newName);
+            strTransformEx(Buffer, newName, 0, nameLen, true); /// Transform the key to lower if insensitively contained.
+            replace(Buffer, charsmax(Buffer), newName, Trimmed);
+#endif
+        }
+        ArrayPushString(Lines, Buffer);
+        ++Size;
+    }
+    fclose(File);
+    if (!bExists || Size < 1)
+    {
+        ArrayDestroy(Lines);
+        return false;
+    }
+    get_localinfo("amxx_plugins", Buffer, charsmax(Buffer));
+    File = fopen(Buffer, "w");
+    for (new Iter = 0; Iter < Size; Iter++)
+        fprintf(File, "%a", ArrayGetStringHandle(Lines, Iter));
+    fclose(File);
+    ArrayDestroy(Lines);
+    log_to_file(logFile, "Disabling '%s' plugin in order to run this plugin properly!", pluginFileName);
+    return true;
+}
+
+#if !defined replace_stringex
+strTransformEx(Buffer[], const Key[], Skip, Chars, bool: lowerCase)
+{
+    static Pos, Iter;
+    Pos = containi(Buffer, Key);
+    if (Pos > -1)
+        for (Iter = Skip + Pos; Iter < Pos + Skip + Chars; Iter++)
+            Buffer[Iter] = lowerCase ? char_to_lower(Buffer[Iter]) : char_to_upper(Buffer[Iter]);
+}
+#endif
+
+#if !defined ArrayResize
+ArrayFindString(Array: Which, const String[])
+{
+    static Iter, Size, Buffer[256];
+    Size = ArraySize(Which);
+    for (Iter = 0; Iter < Size; Iter++)
+    {
+        ArrayGetString(Which, Iter, Buffer, charsmax(Buffer));
+        if (equal(Buffer, String))
+            return Iter;
+    }
+    return -1;
+}
+
+ArrayFindValue(Array: Which, Value)
+{
+    static Iter, Size;
+    Size = ArraySize(Which);
+    for (Iter = 0; Iter < Size; Iter++)
+        if (Value == ArrayGetCell(Which, Iter))
+            return Iter;
+    return -1;
+}
+#endif
+
+#if !defined char_to_upper || !defined char_to_lower || !defined MAX_STRING_LENGTH
+char_to_upper(c)
+{
+	if (c >= 'a' && c <= 'z')
+		return (c & ~(1 << 5));
+	return c;
+}
+
+char_to_lower(c)
+{
+	if (c >= 'A' && c <= 'Z')
+		return (c | (1 << 5));
+	return c;
+}
+#endif
