@@ -100,8 +100,9 @@ new Float: g_hudVerPosImpa; /// Vertical position of the HUD msg. managed by 'g_
 new Float: g_hudHorPosImpa; /// Horizontal position of the HUD msg. managed by 'g_hudMsgImpa'.
 new Float: g_hudVerPosImpaCmd; /// Vertical position of the HUD msg. related to on-impact explo. nade proj. deton. client cmd.
 new Float: g_hudHorPosImpaCmd; /// Horizontal position of the HUD msg. related to on-impact explo. nade proj. deton. client cmd.
-new Handle: g_Sql; /// Threaded database storage. (**)
-new Handle: g_sqlCon = Empty_Handle; /// A temporary non-threaded database connection handle. (**)
+new Handle: g_threadedSqlConnectionTuple = Empty_Handle; /// Threaded database storage. (**)
+new Handle: g_tmpSqlConnectionTuple = Empty_Handle; /// Non-threaded temporary database storage. (**)
+new Handle: g_tmpSqlConnection = Empty_Handle; /// A temporary non-threaded database connection handle. (**)
 new bool: g_initiallyConnected = false; /// Whether SQL server was online during plugin's plugin_init() call (SQLite is always online). (**)
 
 public plugin_init()
@@ -247,18 +248,21 @@ public plugin_init()
                     Drv);
                 log_amx("Nade Manager plugin may work without SQL stuff if 'on-impact explo. nade proj. deton.' feature is off.");
             }
-        g_Sql = SQL_MakeDbTuple(Host, User, Pass, Db, 3);
-        g_sqlCon = SQL_Connect(g_Sql, errCode, Err, charsmax(Err)); /// Connect just to see whether server is up or down.
-        if (Empty_Handle != g_sqlCon)
+        g_threadedSqlConnectionTuple = SQL_MakeDbTuple(Host, User, Pass, Db);
+        g_tmpSqlConnectionTuple = SQL_MakeDbTuple(Host, User, Pass, Db, 3);
+        g_tmpSqlConnection = SQL_Connect(g_tmpSqlConnectionTuple, errCode, Err, charsmax(Err)); /// Connect just to see whether server is up or down.
+        if (Empty_Handle != g_tmpSqlConnection)
         {
             g_initiallyConnected = true;
-            SQL_FreeHandle(g_sqlCon); /// If server is up, immediately shut down the non-threaded SQL database connection.
-            g_sqlCon = Empty_Handle;
+            SQL_FreeHandle(g_tmpSqlConnection); /// If server is up, immediately shut down the non-threaded SQL database connection.
+            g_tmpSqlConnection = Empty_Handle;
+            SQL_FreeHandle(g_tmpSqlConnectionTuple);
+            g_tmpSqlConnectionTuple = Empty_Handle;
             if (g_isStorageLocal)
-                SQL_ThreadQuery(g_Sql, "EmptySqlHandler",
+                SQL_ThreadQuery(g_threadedSqlConnectionTuple, "EmptySqlHandler",
                     "CREATE TABLE IF NOT EXISTS insta_nades (setting TINYINT NOT NULL, steam CHARACTER (32) NOT NULL UNIQUE COLLATE NOCASE, PRIMARY KEY (steam), UNIQUE (steam))");
             else
-                SQL_ThreadQuery(g_Sql, "EmptySqlHandler",
+                SQL_ThreadQuery(g_threadedSqlConnectionTuple, "EmptySqlHandler",
                     "CREATE TABLE IF NOT EXISTS insta_nades (setting TINYINT NOT NULL, steam CHAR (32) NOT NULL COLLATE utf8mb4_unicode_520_ci, PRIMARY KEY (steam), UNIQUE (steam)) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_520_ci");
         }
         else
@@ -274,7 +278,7 @@ public plugin_init()
                 log_amx("As soon as the connection establishes, map will restart automatically.");
                 log_amx("If you are using SQLite, 'sqlite' module needs to be enabled in '../amxmodx/configs/modules.ini'.");
                 log_amx("Nade Manager plugin may work without SQL stuff if 'on-impact explo. nade proj. deton.' feature is off.");
-                set_task(0.1, "Task_VerifyConnection");
+                set_task(1.0, "Task_VerifyConnection");
             }
         }
     }
@@ -313,10 +317,12 @@ public plugin_init()
 public Task_VerifyConnection()
 {
     static Map[64], errCode, Err[4];
-    g_sqlCon = SQL_Connect(g_Sql, errCode, Err, charsmax(Err));
-    if (Empty_Handle != g_sqlCon)
+    g_tmpSqlConnection = SQL_Connect(g_tmpSqlConnectionTuple, errCode, Err, charsmax(Err));
+    if (Empty_Handle != g_tmpSqlConnection)
     {
-        SQL_FreeHandle(g_sqlCon);
+        SQL_FreeHandle(g_tmpSqlConnection);
+        if (Empty_Handle != g_tmpSqlConnectionTuple)
+            SQL_FreeHandle(g_tmpSqlConnectionTuple);
         get_mapname(Map, charsmax(Map));
 #if defined engine_changelevel
         engine_changelevel(Map);
@@ -329,7 +335,7 @@ public Task_VerifyConnection()
 #endif
     }
     else
-        set_task(0.1, "Task_VerifyConnection");
+        set_task(1.0, "Task_VerifyConnection");
 }
 
 public OnExploNadeCanDeploy_Pre(Entity)
@@ -397,7 +403,7 @@ public client_authorized(Player)
     { /// Skipping fake players (long enough Steam string).
         formatex(g_Buffer, charsmax(g_Buffer), "SELECT setting FROM insta_nades WHERE steam = '%s'", Steam);
         num_to_str(get_user_userid(Player), Info, charsmax(Info));
-        SQL_ThreadQuery(g_Sql, "OnSqlSelection", g_Buffer, Info, sizeof Info);
+        SQL_ThreadQuery(g_threadedSqlConnectionTuple, "OnSqlSelection", g_Buffer, Info, sizeof Info);
     }
     return PLUGIN_CONTINUE;
 }
@@ -646,7 +652,7 @@ public DOD_ON_PLAYER_DISCONNECTED
                 "INSERT INTO insta_nades VALUES (%d, '%s') ON DUPLICATE KEY UPDATE setting = %d",
                 g_usingImpa[Player], g_Steam[Player], g_usingImpa[Player]);
 
-        SQL_ThreadQuery(g_Sql, "EmptySqlHandler", g_Buffer);
+        SQL_ThreadQuery(g_threadedSqlConnectionTuple, "EmptySqlHandler", g_Buffer);
     }
     zeroPlayerGlobals(Player);
 }

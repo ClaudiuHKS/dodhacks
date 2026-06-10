@@ -33,7 +33,8 @@
 native bool: DoD_IsUserWaitingThrowingKnife(Player);
 #endif
 
-new Handle: g_Sql; /// Threaded database storage.
+new Handle: g_tmpSqlConnectionTuple = Empty_Handle; /// Non-threaded temporary database storage.
+new Handle: g_threadedSqlConnectionTuple = Empty_Handle; /// Threaded database storage.
 new DoD_Address: g_WpnBoxKill; /// CWeaponBox::Kill() function address.
 new Array: g_Items[33]; /// Player item entity names.
 new Array: g_Entities[33]; /// Player item entities.
@@ -90,7 +91,7 @@ new g_MaxPlayers; /// Maximum players server can handle.
 new g_Flag; /// Admin access required for using this feature ('guns' command).
 new g_FlagNades; /// Admin access required for receiving explosive grenade(s) during spawn.
 new g_FlagHandGuns; /// Admin access required for receiving hand gun ammo during spawn.
-new Handle: g_sqlCon = Empty_Handle;
+new Handle: g_tmpSqlConnection = Empty_Handle;
 new bool: g_initiallyConnected = false;
 
 public plugin_init()
@@ -264,29 +265,32 @@ public plugin_init()
         if (!SQL_SetAffinity(Driver))
             log_amx("SQL_SetAffinity('%s') call failed. Ensure the module is enabled in '../amxmodx/configs/modules.ini'.",
                 Driver);
-    g_Sql = SQL_MakeDbTuple(Host, User, Pass, Db, 3);
-    g_sqlCon = SQL_Connect(g_Sql, errCode, Err, charsmax(Err));
-    if (Empty_Handle != g_sqlCon)
+    g_threadedSqlConnectionTuple = SQL_MakeDbTuple(Host, User, Pass, Db);
+    g_tmpSqlConnectionTuple = SQL_MakeDbTuple(Host, User, Pass, Db, 3);
+    g_tmpSqlConnection = SQL_Connect(g_tmpSqlConnectionTuple, errCode, Err, charsmax(Err));
+    if (Empty_Handle != g_tmpSqlConnection)
     {
         g_initiallyConnected = true;
-        SQL_FreeHandle(g_sqlCon);
-        g_sqlCon = Empty_Handle;
+        SQL_FreeHandle(g_tmpSqlConnection);
+        g_tmpSqlConnection = Empty_Handle;
+        SQL_FreeHandle(g_tmpSqlConnectionTuple);
+        g_tmpSqlConnectionTuple = Empty_Handle;
         if (g_British)
         {
             if (g_Local)
-                SQL_ThreadQuery(g_Sql, "EmptySqlHandler",
+                SQL_ThreadQuery(g_threadedSqlConnectionTuple, "EmptySqlHandler",
                     "CREATE TABLE IF NOT EXISTS guns_british (gun TINYINT NOT NULL, steam CHARACTER (32) NOT NULL UNIQUE COLLATE NOCASE, PRIMARY KEY (steam), UNIQUE (steam))");
             else
-                SQL_ThreadQuery(g_Sql, "EmptySqlHandler",
+                SQL_ThreadQuery(g_threadedSqlConnectionTuple, "EmptySqlHandler",
                     "CREATE TABLE IF NOT EXISTS guns_british (gun TINYINT NOT NULL, steam CHAR (32) NOT NULL COLLATE utf8mb4_unicode_520_ci, PRIMARY KEY (steam), UNIQUE (steam)) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_520_ci");
         }
         else
         {
             if (g_Local)
-                SQL_ThreadQuery(g_Sql, "EmptySqlHandler",
+                SQL_ThreadQuery(g_threadedSqlConnectionTuple, "EmptySqlHandler",
                     "CREATE TABLE IF NOT EXISTS guns_allies (gun TINYINT NOT NULL, steam CHARACTER (32) NOT NULL UNIQUE COLLATE NOCASE, PRIMARY KEY (steam), UNIQUE (steam))");
             else
-                SQL_ThreadQuery(g_Sql, "EmptySqlHandler",
+                SQL_ThreadQuery(g_threadedSqlConnectionTuple, "EmptySqlHandler",
                     "CREATE TABLE IF NOT EXISTS guns_allies (gun TINYINT NOT NULL, steam CHAR (32) NOT NULL COLLATE utf8mb4_unicode_520_ci, PRIMARY KEY (steam), UNIQUE (steam)) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_520_ci");
         }
     }
@@ -295,7 +299,7 @@ public plugin_init()
         log_amx("Weapons plugin loaded with MySQL server being offline.");
         log_amx("As soon as the connection establishes, map will restart automatically.");
         log_amx("If you are using SQLite, 'sqlite' module needs to be enabled in '../amxmodx/configs/modules.ini'.");
-        set_task(0.1, "Task_VerifyConnection");
+        set_task(1.0, "Task_VerifyConnection");
     }
     return PLUGIN_CONTINUE;
 }
@@ -357,7 +361,7 @@ public client_authorized(Player)
                 "SELECT gun FROM guns_allies WHERE steam = '%s'", Steam);
 
         num_to_str(get_user_userid(Player), Info, charsmax(Info));
-        SQL_ThreadQuery(g_Sql, "OnSqlSelection", g_Buffer, Info, sizeof Info);
+        SQL_ThreadQuery(g_threadedSqlConnectionTuple, "OnSqlSelection", g_Buffer, Info, sizeof Info);
     }
 }
 
@@ -539,10 +543,12 @@ public OnWeaponMenuPage(Player, Status)
 public Task_VerifyConnection()
 {
     static Map[64], errCode, Err[4];
-    g_sqlCon = SQL_Connect(g_Sql, errCode, Err, charsmax(Err));
-    if (Empty_Handle != g_sqlCon)
+    g_tmpSqlConnection = SQL_Connect(g_tmpSqlConnectionTuple, errCode, Err, charsmax(Err));
+    if (Empty_Handle != g_tmpSqlConnection)
     {
-        SQL_FreeHandle(g_sqlCon);
+        SQL_FreeHandle(g_tmpSqlConnection);
+        if (g_tmpSqlConnectionTuple != Empty_Handle)
+            SQL_FreeHandle(g_tmpSqlConnectionTuple);
         get_mapname(Map, charsmax(Map));
 #if defined engine_changelevel
         engine_changelevel(Map);
@@ -555,7 +561,7 @@ public Task_VerifyConnection()
 #endif
     }
     else
-        set_task(0.1, "Task_VerifyConnection");
+        set_task(1.0, "Task_VerifyConnection");
 }
 
 public OnWeaponMenuItem(Player, Menu, Item)
@@ -1124,7 +1130,7 @@ F_StoreSelection(Player)
                 "INSERT INTO guns_allies VALUES (%d, '%s') ON DUPLICATE KEY UPDATE gun = %d",
                 g_Gun[Player], g_Steam[Player], g_Gun[Player]);
     }
-    SQL_ThreadQuery(g_Sql, "EmptySqlHandler", g_Buffer);
+    SQL_ThreadQuery(g_threadedSqlConnectionTuple, "EmptySqlHandler", g_Buffer);
 }
 
 F_PlayingPlayers(Team)

@@ -566,7 +566,7 @@ public show_score(){
     static Msg[96], alliesStr[24], axisStr[24];
     addCommasInt(dod_get_team_score(ALLIES), alliesStr, charsmax(alliesStr));
     addCommasInt(dod_get_team_score(AXIS), axisStr, charsmax(axisStr));
-    message_begin(MSG_BROADCAST, SVC_DIRECTOR);
+    message_begin(MSG_BROADCAST, SVC_DIRECTOR, { 0, 0, 0 }, -1 /** A null entity (an invalid entity index). */);
     write_byte(
       formatex(
         Msg, sizeof Msg,

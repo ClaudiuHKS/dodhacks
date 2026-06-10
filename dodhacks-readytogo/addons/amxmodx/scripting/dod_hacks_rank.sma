@@ -45,7 +45,8 @@ new g_minPlayersForRanking;
 new g_secondsToDeleteEntries;
 new g_playerRankEntry[33];
 new g_playerJoinUnixTimeStamp[33];
-new Handle: g_Sql;
+new Handle: g_tmpSqlConnectionTuple = Empty_Handle;
+new Handle: g_threadedSqlConnectionTuple = Empty_Handle;
 new bool: g_isSpecial;
 new bool: g_isClassic;
 new bool: g_onlyHumans;
@@ -66,7 +67,7 @@ new g_Buffer[512];
 new g_playerName[33][32];
 new g_playerSteam[33][96];
 new g_playerCleanName[33][64];
-new Handle: g_sqlCon = Empty_Handle;
+new Handle: g_tmpSqlConnection = Empty_Handle;
 new bool: g_initiallyConnected = false;
 
 /**
@@ -145,13 +146,16 @@ public plugin_init()
         if (!SQL_SetAffinity(Driver))
             log_amx("SQL_SetAffinity('%s') call failed. Ensure the module is enabled in '../amxmodx/configs/modules.ini'.",
                 Driver);
-    g_Sql = SQL_MakeDbTuple(Host, User, Pass, Db, 3);
-    g_sqlCon = SQL_Connect(g_Sql, errCode, Err, charsmax(Err));
-    if (Empty_Handle != g_sqlCon)
+    g_threadedSqlConnectionTuple = SQL_MakeDbTuple(Host, User, Pass, Db);
+    g_tmpSqlConnectionTuple = SQL_MakeDbTuple(Host, User, Pass, Db, 3);
+    g_tmpSqlConnection = SQL_Connect(g_tmpSqlConnectionTuple, errCode, Err, charsmax(Err));
+    if (Empty_Handle != g_tmpSqlConnection)
     {
         g_initiallyConnected = true;
-        SQL_FreeHandle(g_sqlCon);
-        g_sqlCon = Empty_Handle;
+        SQL_FreeHandle(g_tmpSqlConnection);
+        g_tmpSqlConnection = Empty_Handle;
+        SQL_FreeHandle(g_tmpSqlConnectionTuple);
+        g_tmpSqlConnectionTuple = Empty_Handle;
         register_concmd("amx_rank_drop", "OnConCmd_Drop", ADMIN_RCON, "- erases all rank entries (after map change)");
         register_concmd("amx_rank_zero", "OnConCmd_Zero", ADMIN_RCON, "- zeroes all rank entries (now)");
         register_message(get_user_msgid("ObjScore"), "On_ObjScore_Message");
@@ -159,10 +163,10 @@ public plugin_init()
         {
             if (g_isStorageLocal)
             {
-                SQL_ThreadQuery(g_Sql, "dummySql",
+                SQL_ThreadQuery(g_threadedSqlConnectionTuple, "dummySql",
                     "CREATE TABLE IF NOT EXISTS pSteamStats (pEntry INTEGER NOT NULL, pName CHARACTER (32) NOT NULL COLLATE NOCASE, pSteam CHARACTER (64) NOT NULL UNIQUE COLLATE NOCASE, pKills INTEGER NOT NULL, pDeaths INTEGER NOT NULL, pHeads INTEGER NOT NULL, pScore INTEGER NOT NULL, pSecs INTEGER NOT NULL, pPerf FLOAT NOT NULL, pKdr FLOAT NOT NULL, pJoin INTEGER NOT NULL, PRIMARY KEY (pEntry AUTOINCREMENT), UNIQUE (pSteam))");
-                SQL_ThreadQuery(g_Sql, "dummySql", "CREATE INDEX IF NOT EXISTS idxPlayerPerf ON pSteamStats(pPerf)");
-                SQL_ThreadQuery(g_Sql, "dummySql", "CREATE INDEX IF NOT EXISTS idxPlayerKdr ON pSteamStats(pKdr)");
+                SQL_ThreadQuery(g_threadedSqlConnectionTuple, "dummySql", "CREATE INDEX IF NOT EXISTS idxPlayerPerf ON pSteamStats(pPerf)");
+                SQL_ThreadQuery(g_threadedSqlConnectionTuple, "dummySql", "CREATE INDEX IF NOT EXISTS idxPlayerKdr ON pSteamStats(pKdr)");
             }
             else
             { /// Workaround for older AMX Mod X versions.
@@ -170,29 +174,29 @@ public plugin_init()
                     "CREATE TABLE IF NOT EXISTS pSteamStats (pEntry INTEGER NOT NULL AUTO_INCREMENT, pName CHAR (32) NOT NULL COLLATE utf8mb4_unicode_520_ci, pSteam CHAR (64) NOT NULL COLLATE utf8mb4_unicode_520_ci, pKills INTEGER NOT NULL, pDeaths INTEGER NOT NULL, pHeads INTEGER NOT NULL, pScore INTEGER NOT NULL, pSecs INTEGER NOT NULL, pPerf FLOAT NOT NULL, pKdr FLOAT NOT NULL, pJoin INTEGER NOT NULL, PRIMARY KEY (pEntry), UNIQUE (pSteam))");
                 add(g_Buffer, charsmax(g_Buffer),
                     " ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_520_ci");
-                SQL_ThreadQuery(g_Sql, "dummySql", g_Buffer);
-                SQL_ThreadQuery(g_Sql, "dummySql", "CREATE INDEX IF NOT EXISTS idxPlayerPerf ON pSteamStats(pPerf)");
-                SQL_ThreadQuery(g_Sql, "dummySql", "CREATE INDEX IF NOT EXISTS idxPlayerKdr ON pSteamStats(pKdr)");
+                SQL_ThreadQuery(g_threadedSqlConnectionTuple, "dummySql", g_Buffer);
+                SQL_ThreadQuery(g_threadedSqlConnectionTuple, "dummySql", "CREATE INDEX IF NOT EXISTS idxPlayerPerf ON pSteamStats(pPerf)");
+                SQL_ThreadQuery(g_threadedSqlConnectionTuple, "dummySql", "CREATE INDEX IF NOT EXISTS idxPlayerKdr ON pSteamStats(pKdr)");
             }
-            SQL_ThreadQuery(g_Sql, "On_Sql_Total_Ranks_Revealing", "SELECT COUNT(*) FROM pSteamStats");
+            SQL_ThreadQuery(g_threadedSqlConnectionTuple, "On_Sql_Total_Ranks_Revealing", "SELECT COUNT(*) FROM pSteamStats");
         }
         else
         {
             if (g_isStorageLocal)
             {
-                SQL_ThreadQuery(g_Sql, "dummySql",
+                SQL_ThreadQuery(g_threadedSqlConnectionTuple, "dummySql",
                     "CREATE TABLE IF NOT EXISTS pNameStats (pEntry INTEGER NOT NULL, pName CHARACTER (32) NOT NULL UNIQUE COLLATE NOCASE, pKills INTEGER NOT NULL, pDeaths INTEGER NOT NULL, pHeads INTEGER NOT NULL, pScore INTEGER NOT NULL, pSecs INTEGER NOT NULL, pPerf FLOAT NOT NULL, pKdr FLOAT NOT NULL, pJoin INTEGER NOT NULL, PRIMARY KEY (pEntry AUTOINCREMENT), UNIQUE (pName))");
-                SQL_ThreadQuery(g_Sql, "dummySql", "CREATE INDEX IF NOT EXISTS idxPlayerPerf ON pNameStats(pPerf)");
-                SQL_ThreadQuery(g_Sql, "dummySql", "CREATE INDEX IF NOT EXISTS idxPlayerKdr ON pNameStats(pKdr)");
+                SQL_ThreadQuery(g_threadedSqlConnectionTuple, "dummySql", "CREATE INDEX IF NOT EXISTS idxPlayerPerf ON pNameStats(pPerf)");
+                SQL_ThreadQuery(g_threadedSqlConnectionTuple, "dummySql", "CREATE INDEX IF NOT EXISTS idxPlayerKdr ON pNameStats(pKdr)");
             }
             else
             {
-                SQL_ThreadQuery(g_Sql, "dummySql",
+                SQL_ThreadQuery(g_threadedSqlConnectionTuple, "dummySql",
                     "CREATE TABLE IF NOT EXISTS pNameStats (pEntry INTEGER NOT NULL AUTO_INCREMENT, pName CHAR (32) NOT NULL COLLATE utf8mb4_unicode_520_ci, pKills INTEGER NOT NULL, pDeaths INTEGER NOT NULL, pHeads INTEGER NOT NULL, pScore INTEGER NOT NULL, pSecs INTEGER NOT NULL, pPerf FLOAT NOT NULL, pKdr FLOAT NOT NULL, pJoin INTEGER NOT NULL, PRIMARY KEY (pEntry), UNIQUE (pName)) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_520_ci");
-                SQL_ThreadQuery(g_Sql, "dummySql", "CREATE INDEX IF NOT EXISTS idxPlayerPerf ON pNameStats(pPerf)");
-                SQL_ThreadQuery(g_Sql, "dummySql", "CREATE INDEX IF NOT EXISTS idxPlayerKdr ON pNameStats(pKdr)");
+                SQL_ThreadQuery(g_threadedSqlConnectionTuple, "dummySql", "CREATE INDEX IF NOT EXISTS idxPlayerPerf ON pNameStats(pPerf)");
+                SQL_ThreadQuery(g_threadedSqlConnectionTuple, "dummySql", "CREATE INDEX IF NOT EXISTS idxPlayerKdr ON pNameStats(pKdr)");
             }
-            SQL_ThreadQuery(g_Sql, "On_Sql_Total_Ranks_Revealing", "SELECT COUNT(*) FROM pNameStats");
+            SQL_ThreadQuery(g_threadedSqlConnectionTuple, "On_Sql_Total_Ranks_Revealing", "SELECT COUNT(*) FROM pNameStats");
         }
     }
     else
@@ -200,7 +204,7 @@ public plugin_init()
         log_amx("Rank plugin loaded with MySQL server being offline.");
         log_amx("As soon as the connection establishes, map will restart automatically.");
         log_amx("If you are using SQLite, 'sqlite' module needs to be enabled in '../amxmodx/configs/modules.ini'.");
-        set_task(0.1, "Task_VerifyConnection");
+        set_task(1.0, "Task_VerifyConnection");
     }
 
     if (g_doAlterPlayerDeaths)
@@ -216,10 +220,12 @@ public plugin_init()
 public Task_VerifyConnection()
 {
     static Map[64], errCode, Err[4];
-    g_sqlCon = SQL_Connect(g_Sql, errCode, Err, charsmax(Err));
-    if (Empty_Handle != g_sqlCon)
+    g_tmpSqlConnection = SQL_Connect(g_tmpSqlConnectionTuple, errCode, Err, charsmax(Err));
+    if (Empty_Handle != g_tmpSqlConnection)
     {
-        SQL_FreeHandle(g_sqlCon);
+        SQL_FreeHandle(g_tmpSqlConnection);
+        if (Empty_Handle != g_tmpSqlConnectionTuple)
+            SQL_FreeHandle(g_tmpSqlConnectionTuple);
         get_mapname(Map, charsmax(Map));
 #if defined engine_changelevel
         engine_changelevel(Map);
@@ -232,14 +238,14 @@ public Task_VerifyConnection()
 #endif
     }
     else
-        set_task(0.1, "Task_VerifyConnection");
+        set_task(1.0, "Task_VerifyConnection");
 }
 
 public plugin_end()
     if (g_shouldDropTables)
     { /// At this point, `g_initiallyConnected' is true.
-        SQL_ThreadQuery(g_Sql, "dummySql", "DROP TABLE IF EXISTS pNameStats");
-        SQL_ThreadQuery(g_Sql, "dummySql", "DROP TABLE IF EXISTS pSteamStats");
+        SQL_ThreadQuery(g_threadedSqlConnectionTuple, "dummySql", "DROP TABLE IF EXISTS pNameStats");
+        SQL_ThreadQuery(g_threadedSqlConnectionTuple, "dummySql", "DROP TABLE IF EXISTS pSteamStats");
     }
     else if (g_removeOldEntries && g_initiallyConnected)
     {
@@ -251,7 +257,7 @@ public plugin_end()
             formatex(g_Buffer, charsmax(g_Buffer),
                 "DELETE FROM pNameStats WHERE pJoin < %d",
                 get_systime() - g_secondsToDeleteEntries);
-        SQL_ThreadQuery(g_Sql, "dummySql", g_Buffer);
+        SQL_ThreadQuery(g_threadedSqlConnectionTuple, "dummySql", g_Buffer);
     }
 
 public client_connect(Player)
@@ -283,7 +289,7 @@ public DOD_ON_PLAYER_DISCONNECTED
                 "UPDATE pNameStats SET pSecs = pSecs + %d WHERE pEntry = %d",
                 get_systime() - g_playerJoinUnixTimeStamp[Player],
                 g_playerRankEntry[Player]);
-        SQL_ThreadQuery(g_Sql, "dummySql", g_Buffer);
+        SQL_ThreadQuery(g_threadedSqlConnectionTuple, "dummySql", g_Buffer);
     }
     g_isPlayerAuth[Player]     = false;
     g_isPlayerFake[Player]     = false;
@@ -326,7 +332,7 @@ public client_authorized(Player)
                     "SELECT pEntry FROM pSteamStats WHERE pSteam = '%s'",
                     g_playerSteam[Player]);
                 num_to_str(get_user_userid(Player), Info, charsmax(Info));
-                SQL_ThreadQuery(g_Sql, "On_Sql_Entry_Selection", g_Buffer, Info, sizeof Info);
+                SQL_ThreadQuery(g_threadedSqlConnectionTuple, "On_Sql_Entry_Selection", g_Buffer, Info, sizeof Info);
             }
             else if (copy(g_playerSteam[Player], charsmax(g_playerSteam[]), Steam) > 4)
             {
@@ -334,7 +340,7 @@ public client_authorized(Player)
                     "SELECT pEntry FROM pSteamStats WHERE pSteam = '%s'",
                     Steam);
                 num_to_str(get_user_userid(Player), Info, charsmax(Info));
-                SQL_ThreadQuery(g_Sql, "On_Sql_Entry_Selection", g_Buffer, Info, sizeof Info);
+                SQL_ThreadQuery(g_threadedSqlConnectionTuple, "On_Sql_Entry_Selection", g_Buffer, Info, sizeof Info);
             }
         }
         else
@@ -351,7 +357,7 @@ public client_authorized(Player)
                     "SELECT pEntry FROM pNameStats WHERE pName = '%s'",
                     g_playerCleanName[Player]);
                 num_to_str(get_user_userid(Player), Info, charsmax(Info));
-                SQL_ThreadQuery(g_Sql, "On_Sql_Entry_Selection", g_Buffer, Info, sizeof Info);
+                SQL_ThreadQuery(g_threadedSqlConnectionTuple, "On_Sql_Entry_Selection", g_Buffer, Info, sizeof Info);
             }
             else if (copy(g_playerSteam[Player], charsmax(g_playerSteam[]), Steam) > 4)
             {
@@ -359,7 +365,7 @@ public client_authorized(Player)
                     "SELECT pEntry FROM pNameStats WHERE pName = '%s'",
                     g_playerCleanName[Player]);
                 num_to_str(get_user_userid(Player), Info, charsmax(Info));
-                SQL_ThreadQuery(g_Sql, "On_Sql_Entry_Selection", g_Buffer, Info, sizeof Info);
+                SQL_ThreadQuery(g_threadedSqlConnectionTuple, "On_Sql_Entry_Selection", g_Buffer, Info, sizeof Info);
             }
         }
     }
@@ -388,7 +394,7 @@ public client_infochanged(Player)
                 formatex(g_Buffer, charsmax(g_Buffer),
                     "UPDATE pSteamStats SET pName = '%s' WHERE pEntry = %d",
                     g_playerCleanName[Player], g_playerRankEntry[Player]);
-                SQL_ThreadQuery(g_Sql, "dummySql", g_Buffer);
+                SQL_ThreadQuery(g_threadedSqlConnectionTuple, "dummySql", g_Buffer);
             }
             else if (!equali(Name, g_playerName[Player]))
             {
@@ -400,13 +406,13 @@ public client_infochanged(Player)
                 formatex(g_Buffer, charsmax(g_Buffer),
                     "UPDATE pNameStats SET pSecs = pSecs + %d WHERE pEntry = %d",
                     Time - g_playerJoinUnixTimeStamp[Player], g_playerRankEntry[Player]);
-                SQL_ThreadQuery(g_Sql, "dummySql", g_Buffer);
+                SQL_ThreadQuery(g_threadedSqlConnectionTuple, "dummySql", g_Buffer);
                 g_playerJoinUnixTimeStamp[Player] = Time;
                 formatex(g_Buffer, charsmax(g_Buffer),
                     "SELECT pEntry FROM pNameStats WHERE pName = '%s'",
                     g_playerCleanName[Player]);
                 num_to_str(get_user_userid(Player), Info, charsmax(Info));
-                SQL_ThreadQuery(g_Sql, "On_Sql_Entry_Selection", g_Buffer,
+                SQL_ThreadQuery(g_threadedSqlConnectionTuple, "On_Sql_Entry_Selection", g_Buffer,
                     Info, sizeof Info);
             }
             else
@@ -418,7 +424,7 @@ public client_infochanged(Player)
                 formatex(g_Buffer, charsmax(g_Buffer),
                     "UPDATE pNameStats SET pName = '%s' WHERE pEntry = %d",
                     g_playerCleanName[Player], g_playerRankEntry[Player]);
-                SQL_ThreadQuery(g_Sql, "dummySql", g_Buffer);
+                SQL_ThreadQuery(g_threadedSqlConnectionTuple, "dummySql", g_Buffer);
             }
         }
         else
@@ -465,35 +471,43 @@ public client_command(Player)
                         "SELECT DISTINCT pKdr FROM pNameStats WHERE pKdr >= (SELECT pKdr FROM pNameStats WHERE pEntry = %d) ORDER BY pKdr ASC",
                         g_playerRankEntry[Player]);
             }
-            SQL_ThreadQuery(g_Sql, "On_Sql_Rank_Cmd", g_Buffer, Info, sizeof Info);
+            SQL_ThreadQuery(g_threadedSqlConnectionTuple, "On_Sql_Rank_Cmd", g_Buffer, Info, sizeof Info);
             return g_hideChatCmds ? PLUGIN_HANDLED : PLUGIN_CONTINUE;
         }
         else if (equali(Arg, "top") || equali(Arg, "top10") || equali(Arg, "top15") ||
             ((Arg[0] == '/' || Arg[0] == '!' || Arg[0] == ',' || Arg[0] == '.') &&
             (equali(Arg[1], "top") || equali(Arg[1], "top10") || equali(Arg[1], "top15"))))
         {
-            num_to_str(get_user_userid(Player), Info, charsmax(Info));
-            if (g_areRanksSteamBased)
+            switch (isPlayerViewingAMenu(Player))
             {
-                if (g_isSpecial)
-                    SQL_ThreadQuery(g_Sql, "On_Sql_Top_Cmd",
-                        "SELECT pName, pPerf FROM pSteamStats ORDER BY pPerf DESC LIMIT 63",
-                        Info, sizeof Info);
-                else
-                    SQL_ThreadQuery(g_Sql, "On_Sql_Top_Cmd",
-                        "SELECT pName, pKdr FROM pSteamStats ORDER BY pKdr DESC LIMIT 63",
-                        Info, sizeof Info);
-            }
-            else
-            {
-                if (g_isSpecial)
-                    SQL_ThreadQuery(g_Sql, "On_Sql_Top_Cmd",
-                        "SELECT pName, pPerf FROM pNameStats ORDER BY pPerf DESC LIMIT 63",
-                        Info, sizeof Info);
-                else
-                    SQL_ThreadQuery(g_Sql, "On_Sql_Top_Cmd",
-                        "SELECT pName, pKdr FROM pNameStats ORDER BY pKdr DESC LIMIT 63",
-                        Info, sizeof Info);
+                case false:
+                {
+                    num_to_str(get_user_userid(Player), Info, charsmax(Info));
+                    if (g_areRanksSteamBased)
+                    {
+                        if (g_isSpecial)
+                            SQL_ThreadQuery(g_threadedSqlConnectionTuple, "On_Sql_Top_Cmd",
+                                "SELECT pName, pPerf FROM pSteamStats ORDER BY pPerf DESC LIMIT 63",
+                                Info, sizeof Info);
+                        else
+                            SQL_ThreadQuery(g_threadedSqlConnectionTuple, "On_Sql_Top_Cmd",
+                                "SELECT pName, pKdr FROM pSteamStats ORDER BY pKdr DESC LIMIT 63",
+                                Info, sizeof Info);
+                    }
+                    else
+                    {
+                        if (g_isSpecial)
+                            SQL_ThreadQuery(g_threadedSqlConnectionTuple, "On_Sql_Top_Cmd",
+                                "SELECT pName, pPerf FROM pNameStats ORDER BY pPerf DESC LIMIT 63",
+                                Info, sizeof Info);
+                        else
+                            SQL_ThreadQuery(g_threadedSqlConnectionTuple, "On_Sql_Top_Cmd",
+                                "SELECT pName, pKdr FROM pNameStats ORDER BY pKdr DESC LIMIT 63",
+                                Info, sizeof Info);
+                    }
+                }
+                default:
+                    client_print(Player, print_chat, "* You're already viewing a menu.");
             }
             return g_hideChatCmds ? PLUGIN_HANDLED : PLUGIN_CONTINUE;
         }
@@ -546,9 +560,9 @@ public OnConCmd_Zero(Player, Level, Command)
         return PLUGIN_HANDLED;
     console_print(Player,
         "* pNameStats and pSteamStats tables are being set to zero.");
-    SQL_ThreadQuery(g_Sql, "dummySql",
+    SQL_ThreadQuery(g_threadedSqlConnectionTuple, "dummySql",
         "UPDATE pSteamStats SET pKills = 0, pDeaths = 0, pHeads = 0, pScore = 0, pKdr = 0.0, pPerf = 0.0");
-    SQL_ThreadQuery(g_Sql, "dummySql",
+    SQL_ThreadQuery(g_threadedSqlConnectionTuple, "dummySql",
         "UPDATE pNameStats SET pKills = 0, pDeaths = 0, pHeads = 0, pScore = 0, pKdr = 0.0, pPerf = 0.0");
     if (Player < 1)
     {
@@ -612,7 +626,7 @@ public On_Task_Welcome_Player(taskIdx)
                 g_playerRankEntry[Player]);
     }
     num_to_str(uniqueUserIndex, Info, charsmax(Info));
-    SQL_ThreadQuery(g_Sql, "On_Sql_Rank_Revealing", g_Buffer, Info, sizeof Info);
+    SQL_ThreadQuery(g_threadedSqlConnectionTuple, "On_Sql_Rank_Revealing", g_Buffer, Info, sizeof Info);
     return PLUGIN_HANDLED;
 }
 
@@ -647,7 +661,7 @@ public On_ObjScore_Message(Index, Destination)
                         "UPDATE pNameStats SET pScore = pScore + 1, pPerf = (CAST(pKills AS DOUBLE) + CAST(pScore AS DOUBLE)) / CAST(GREATEST(1, pDeaths) AS DOUBLE) WHERE pEntry = %d",
                         g_playerRankEntry[Player]);
             }
-            SQL_ThreadQuery(g_Sql, "dummySql", g_Buffer);
+            SQL_ThreadQuery(g_threadedSqlConnectionTuple, "dummySql", g_Buffer);
         }
     }
 }
@@ -666,10 +680,10 @@ public On_Sql_Total_Ranks_Revealing(FailState, Handle: Query)
     else
     { /// If MySQL server down or restarting, retry very fast.
         if (g_areRanksSteamBased)
-            SQL_ThreadQuery(g_Sql, "On_Sql_Total_Ranks_Revealing",
+            SQL_ThreadQuery(g_threadedSqlConnectionTuple, "On_Sql_Total_Ranks_Revealing",
                 "SELECT COUNT(*) FROM pSteamStats");
         else
-            SQL_ThreadQuery(g_Sql, "On_Sql_Total_Ranks_Revealing",
+            SQL_ThreadQuery(g_threadedSqlConnectionTuple, "On_Sql_Total_Ranks_Revealing",
                 "SELECT COUNT(*) FROM pNameStats");
     }
 
@@ -700,7 +714,7 @@ public On_Sql_Entry_Selection(FailState, Handle: Query, const Error[], ErrorNum,
                         "UPDATE pNameStats SET pName = '%s', pJoin = %d WHERE pEntry = %d",
                         g_playerCleanName[Player], g_playerJoinUnixTimeStamp[Player],
                         g_playerRankEntry[Player]);
-                SQL_ThreadQuery(g_Sql, "dummySql", g_Buffer);
+                SQL_ThreadQuery(g_threadedSqlConnectionTuple, "dummySql", g_Buffer);
                 if (g_showWelcomeMsg && !g_isPlayerFake[Player])
                 {
                     taskIdx = uniqueUserIndex + TaskOfs_Rank_UniqueUserId;
@@ -721,7 +735,7 @@ public On_Sql_Entry_Selection(FailState, Handle: Query, const Error[], ErrorNum,
                         "INSERT INTO pNameStats (pName, pKills, pDeaths, pHeads, pScore, pSecs, pPerf, pKdr, pJoin) VALUES ('%s', 0, 0, 0, 0, 0, 0.0, 0.0, %d)",
                         g_playerCleanName[Player], g_playerJoinUnixTimeStamp[Player]);
                 num_to_str(uniqueUserIndex, Info, charsmax(Info));
-                SQL_ThreadQuery(g_Sql, "On_Sql_Entry_Insertion", g_Buffer,
+                SQL_ThreadQuery(g_threadedSqlConnectionTuple, "On_Sql_Entry_Insertion", g_Buffer,
                     Info, sizeof Info);
             }
         }
@@ -745,7 +759,7 @@ public On_Sql_Entry_Selection(FailState, Handle: Query, const Error[], ErrorNum,
                         "SELECT pEntry FROM pSteamStats WHERE pSteam = '%s'",
                         g_playerSteam[Player]);
                     num_to_str(uniqueUserIndex, Info, charsmax(Info));
-                    SQL_ThreadQuery(g_Sql, "On_Sql_Entry_Selection",
+                    SQL_ThreadQuery(g_threadedSqlConnectionTuple, "On_Sql_Entry_Selection",
                         g_Buffer, Info, sizeof Info);
                 }
                 else if (!g_isPlayerFake[Player])
@@ -754,7 +768,7 @@ public On_Sql_Entry_Selection(FailState, Handle: Query, const Error[], ErrorNum,
                         "SELECT pEntry FROM pSteamStats WHERE pSteam = '%s'",
                         g_playerSteam[Player]);
                     num_to_str(uniqueUserIndex, Info, charsmax(Info));
-                    SQL_ThreadQuery(g_Sql, "On_Sql_Entry_Selection",
+                    SQL_ThreadQuery(g_threadedSqlConnectionTuple, "On_Sql_Entry_Selection",
                         g_Buffer, Info, sizeof Info);
                 }
             }
@@ -766,7 +780,7 @@ public On_Sql_Entry_Selection(FailState, Handle: Query, const Error[], ErrorNum,
                         "SELECT pEntry FROM pNameStats WHERE pName = '%s'",
                         g_playerCleanName[Player]);
                     num_to_str(uniqueUserIndex, Info, charsmax(Info));
-                    SQL_ThreadQuery(g_Sql, "On_Sql_Entry_Selection",
+                    SQL_ThreadQuery(g_threadedSqlConnectionTuple, "On_Sql_Entry_Selection",
                         g_Buffer, Info, sizeof Info);
                 }
                 else if (!g_isPlayerFake[Player])
@@ -775,7 +789,7 @@ public On_Sql_Entry_Selection(FailState, Handle: Query, const Error[], ErrorNum,
                         "SELECT pEntry FROM pNameStats WHERE pName = '%s'",
                         g_playerCleanName[Player]);
                     num_to_str(uniqueUserIndex, Info, charsmax(Info));
-                    SQL_ThreadQuery(g_Sql, "On_Sql_Entry_Selection",
+                    SQL_ThreadQuery(g_threadedSqlConnectionTuple, "On_Sql_Entry_Selection",
                         g_Buffer, Info, sizeof Info);
                 }
             }
@@ -858,22 +872,30 @@ public On_Sql_Top_Cmd(FailState, Handle: Query, const Error[], ErrorNum, const D
 #endif
         if (Player > 0)
         {
-            Rank = 0;
-            if (g_isSpecial)
-                Menu = menu_create("Top Players\\r (by PRF)\\w", "On_Menu_Top_Players");
-            else
-                Menu = menu_create("Top Players\\r (by KDR)\\w", "On_Menu_Top_Players");
-            while (SQL_MoreResults(Query))
+            switch (isPlayerViewingAMenu(Player))
             {
-                SQL_ReadResult(Query, 0, Name, charsmax(Name));
-                SQL_ReadResult(Query, 1, Perf);
-                addCommasFlt(Perf, 2, perfStr, charsmax(perfStr));
-                formatex(Entry, charsmax(Entry), "%02d)\\y %s\\r (%s)",
-                    ++Rank, Name, perfStr);
-                menu_additem(Menu, Entry);
-                SQL_NextRow(Query);
+                case false:
+                {
+                    Rank = 0;
+                    if (g_isSpecial)
+                        Menu = menu_create("Top Players\\r (by PRF)\\w", "On_Menu_Top_Players");
+                    else
+                        Menu = menu_create("Top Players\\r (by KDR)\\w", "On_Menu_Top_Players");
+                    while (SQL_MoreResults(Query))
+                    {
+                        SQL_ReadResult(Query, 0, Name, charsmax(Name));
+                        SQL_ReadResult(Query, 1, Perf);
+                        addCommasFlt(Perf, 2, perfStr, charsmax(perfStr));
+                        formatex(Entry, charsmax(Entry), "%02d)\\y %s\\r (%s)",
+                            ++Rank, Name, perfStr);
+                        menu_additem(Menu, Entry);
+                        SQL_NextRow(Query);
+                    }
+                    menu_display(Player, Menu);
+                }
+                default:
+                    client_print(Player, print_chat, "* You're already viewing a menu.");
             }
-            menu_display(Player, Menu);
         }
     }
 }
@@ -911,7 +933,7 @@ public On_Sql_Rank_Cmd(FailState, Handle: Query, const Error[], ErrorNum, const 
                     "SELECT pKills, pDeaths, pHeads, pScore, pSecs, pPerf, pKdr FROM pNameStats WHERE pEntry = %d",
                     g_playerRankEntry[Player]);
             num_to_str(uniqueUserIndex, Info, charsmax(Info));
-            SQL_ThreadQuery(g_Sql, "On_Sql_Rank_Full_Info", g_Buffer, Info, sizeof Info);
+            SQL_ThreadQuery(g_threadedSqlConnectionTuple, "On_Sql_Rank_Full_Info", g_Buffer, Info, sizeof Info);
         }
     }
 }
@@ -992,7 +1014,7 @@ public client_death(Killer, Victim, Weapon, Place, isTeamKill)
                             "UPDATE pSteamStats SET pKills = pKills + 1, pPerf = (CAST(pKills AS DOUBLE) + CAST(pScore AS DOUBLE)) / CAST(GREATEST(pDeaths, 1) AS DOUBLE), pKdr = CAST(pKills AS DOUBLE) / CAST(GREATEST(pDeaths, 1) AS DOUBLE) WHERE pEntry = %d",
                             g_playerRankEntry[Killer]);
                 }
-                SQL_ThreadQuery(g_Sql, "dummySql", g_Buffer);
+                SQL_ThreadQuery(g_threadedSqlConnectionTuple, "dummySql", g_Buffer);
             }
             if (g_playerRankEntry[Victim] > -1 && (g_isClassic || superKiller))
             { /// Using multiple "+1" on SQLITE local storage only.
@@ -1004,7 +1026,7 @@ public client_death(Killer, Victim, Weapon, Place, isTeamKill)
                     formatex(g_Buffer, charsmax(g_Buffer),
                         "UPDATE pSteamStats SET pDeaths = pDeaths + 1, pPerf = (CAST(pKills AS DOUBLE) + CAST(pScore AS DOUBLE)) / CAST(pDeaths AS DOUBLE), pKdr = CAST(pKills AS DOUBLE) / CAST(pDeaths AS DOUBLE) WHERE pEntry = %d",
                         g_playerRankEntry[Victim]);
-                SQL_ThreadQuery(g_Sql, "dummySql", g_Buffer);
+                SQL_ThreadQuery(g_threadedSqlConnectionTuple, "dummySql", g_Buffer);
             }
         }
         else
@@ -1033,7 +1055,7 @@ public client_death(Killer, Victim, Weapon, Place, isTeamKill)
                             "UPDATE pNameStats SET pKills = pKills + 1, pPerf = (CAST(pKills AS DOUBLE) + CAST(pScore AS DOUBLE)) / CAST(GREATEST(pDeaths, 1) AS DOUBLE), pKdr = CAST(pKills AS DOUBLE) / CAST(GREATEST(pDeaths, 1) AS DOUBLE) WHERE pEntry = %d",
                             g_playerRankEntry[Killer]);
                 }
-                SQL_ThreadQuery(g_Sql, "dummySql", g_Buffer);
+                SQL_ThreadQuery(g_threadedSqlConnectionTuple, "dummySql", g_Buffer);
             }
             if (g_playerRankEntry[Victim] > -1 && (g_isClassic || superKiller))
             { /// Using multiple "+1" on SQLITE local storage only.
@@ -1045,7 +1067,7 @@ public client_death(Killer, Victim, Weapon, Place, isTeamKill)
                     formatex(g_Buffer, charsmax(g_Buffer),
                         "UPDATE pNameStats SET pDeaths = pDeaths + 1, pPerf = (CAST(pKills AS DOUBLE) + CAST(pScore AS DOUBLE)) / CAST(pDeaths AS DOUBLE), pKdr = CAST(pKills AS DOUBLE) / CAST(pDeaths AS DOUBLE) WHERE pEntry = %d",
                         g_playerRankEntry[Victim]);
-                SQL_ThreadQuery(g_Sql, "dummySql", g_Buffer);
+                SQL_ThreadQuery(g_threadedSqlConnectionTuple, "dummySql", g_Buffer);
             }
         }
     }
@@ -1206,4 +1228,11 @@ bool: safeIsSqlModuleRunning(const Name[])
     }
     fclose(File);
     return false;
+}
+
+bool: isPlayerViewingAMenu(Player)
+{
+    static Old, New;
+    player_menu_info(Player, Old, New);
+    return Old > 0 || New > -1;
 }
