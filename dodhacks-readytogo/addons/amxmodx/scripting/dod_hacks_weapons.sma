@@ -577,10 +577,10 @@ public OnWeaponMenuItem(Player, Menu, Item)
         {
             F_ShowMenu(Player, false, g_Page[Player]);
 NoAccess:
-            set_hudmessage(20 /** red */, 60 /** green */, 180 /** blue */,
-                g_HorPos /** horizontal pos */, g_VerPos /** vertical pos */,
-                g_HudStyle ? 1 : 0 /** effect type */, 0.5 /** effect time */,
-                2.0 /** duration */, 0.1 /** fade in time */, 0.1 /** fade out time */);
+            set_hudmessage(20 /** Red. */, 60 /** Green. */, 180 /** Blue. */,
+                g_HorPos /** Horizontal position. */, g_VerPos /** Vertical position. */,
+                g_HudStyle ? 1 : 0 /** Effect type. */, 0.5 /** Effect time. */,
+                2.0 /** Duration. */, 0.1 /** Fade in time. */, 0.1 /** Fade out time. */);
             ShowSyncHudMsg(Player, g_HudMsg, "NO ACCESS!");
             return PLUGIN_HANDLED;
         }
@@ -590,10 +590,10 @@ NoAccess:
             if (F_SniperLimitReached(Player, g_Team[Player], Players, Percent))
             {
                 F_ShowMenu(Player, false, g_Page[Player]);
-                set_hudmessage(180 /** red */, 20 /** green */, 100 /** blue */,
-                    g_HorPos /** horizontal pos */, g_VerPos /** vertical pos */,
-                    g_HudStyle ? 1 : 0 /** effect type */, 0.5 /** effect time */,
-                    3.0 /** duration */, 0.1 /** fade in time */, 0.1 /** fade out time */);
+                set_hudmessage(180 /** Red. */, 20 /** Green. */, 100 /** Blue. */,
+                    g_HorPos /** Horizontal position. */, g_VerPos /** Vertical position. */,
+                    g_HudStyle ? 1 : 0 /** Effect type. */, 0.5 /** Effect time. */,
+                    3.0 /** Duration. */, 0.1 /** Fade in time. */, 0.1 /** Fade out time. */);
                 if (1.0 != g_LimitSniper)
                     ShowSyncHudMsg(Player, g_HudMsg, "SNIPER LIMIT OF %0.2f%% REACHED: %d OR %0.2f%%!", g_LimitSniper, Players, Percent);
                 else
@@ -606,10 +606,10 @@ NoAccess:
             if (F_MachineLimitReached(Player, g_Team[Player], Players, Percent))
             {
                 F_ShowMenu(Player, false, g_Page[Player]);
-                set_hudmessage(180 /** red */, 20 /** green */, 100 /** blue */,
-                    g_HorPos /** horizontal pos */, g_VerPos /** vertical pos */,
-                    g_HudStyle ? 1 : 0 /** effect type */, 0.5 /** effect time */,
-                    3.0 /** duration */, 0.1 /** fade in time */, 0.1 /** fade out time */);
+                set_hudmessage(180 /** Red. */, 20 /** Green. */, 100 /** Blue. */,
+                    g_HorPos /** Horizontal position. */, g_VerPos /** Vertical position. */,
+                    g_HudStyle ? 1 : 0 /** Effect type. */, 0.5 /** Effect time. */,
+                    3.0 /** Duration. */, 0.1 /** Fade in time. */, 0.1 /** Fade out time. */);
                 if (1.0 != g_LimitMachine)
                     ShowSyncHudMsg(Player, g_HudMsg, "MACHINE LIMIT OF %0.2f%% REACHED: %d OR %0.2f%%!", g_LimitMachine, Players, Percent);
                 else
@@ -622,10 +622,10 @@ NoAccess:
             if (F_RocketLimitReached(Player, g_Team[Player], Players, Percent))
             {
                 F_ShowMenu(Player, false, g_Page[Player]);
-                set_hudmessage(180 /** red */, 20 /** green */, 100 /** blue */,
-                    g_HorPos /** horizontal pos */, g_VerPos /** vertical pos */,
-                    g_HudStyle ? 1 : 0 /** effect type */, 0.5 /** effect time */,
-                    3.0 /** duration */, 0.1 /** fade in time */, 0.1 /** fade out time */);
+                set_hudmessage(180 /** Red. */, 20 /** Green. */, 100 /** Blue. */,
+                    g_HorPos /** Horizontal position. */, g_VerPos /** Vertical position. */,
+                    g_HudStyle ? 1 : 0 /** Effect type. */, 0.5 /** Effect time. */,
+                    3.0 /** Duration. */, 0.1 /** Fade in time. */, 0.1 /** Fade out time. */);
                 if (1.0 != g_LimitRocket)
                     ShowSyncHudMsg(Player, g_HudMsg, "ROCKET LIMIT OF %0.2f%% REACHED: %d OR %0.2f%%!", g_LimitRocket, Players, Percent);
                 else
@@ -642,20 +642,20 @@ NoAccess:
             {
                 F_ShowMenu(Player, false, g_Page[Player]);
                 Wait = g_Delay - (Time - g_EquipTime[Player]);
-                set_hudmessage(200 /** red */, 20 /** green */, 20 /** blue */,
-                    g_HorPos /** horizontal pos */, g_VerPos /** vertical pos */,
-                    g_HudStyle ? 1 : 0 /** effect type */, 0.5 /** effect time */,
-                    Wait /** duration */, 0.1 /** fade in time */, 0.1 /** fade out time */);
+                set_hudmessage(200 /** Red. */, 20 /** Green. */, 20 /** Blue. */,
+                    g_HorPos /** Horizontal position. */, g_VerPos /** Vertical position. */,
+                    g_HudStyle ? 1 : 0 /** Effect type. */, 0.5 /** Effect time. */,
+                    Wait /** Duration. */, 0.1 /** Fade in time. */, 0.1 /** Fade out time. */);
                 ShowSyncHudMsg(Player, g_HudMsg, "WAIT %.1f SEC!", Wait);
                 return PLUGIN_HANDLED;
             }
             if (false == g_badIsUserWaitingThrowingKnife && DoD_IsUserWaitingThrowingKnife(Player))
             {
                 F_ShowMenu(Player, false, g_Page[Player]);
-                set_hudmessage(200 /** red */, 160 /** green */, 20 /** blue */,
-                    g_HorPos /** horizontal pos */, g_VerPos /** vertical pos */,
-                    g_HudStyle ? 1 : 0 /** effect type */, 0.5 /** effect time */,
-                    Wait /** duration */, 0.1 /** fade in time */, 0.1 /** fade out time */);
+                set_hudmessage(200 /** Red. */, 160 /** Green. */, 20 /** Blue. */,
+                    g_HorPos /** Horizontal position. */, g_VerPos /** Vertical position. */,
+                    g_HudStyle ? 1 : 0 /** Effect type. */, 0.5 /** Effect time. */,
+                    Wait /** Duration. */, 0.1 /** Fade in time. */, 0.1 /** Fade out time. */);
                 ShowSyncHudMsg(Player, g_HudMsg, "WAIT FOR THE KNIFE!");
                 return PLUGIN_HANDLED;
             }

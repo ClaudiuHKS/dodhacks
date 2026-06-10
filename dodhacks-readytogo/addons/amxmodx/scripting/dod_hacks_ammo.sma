@@ -102,10 +102,10 @@ public On_Weapon_PrimaryAttack_Post(Weapon)
         {
             case false:
             {
-                set_hudmessage(180 /** red */, 20 /** green */, 100 /** blue */,
-                    g_horPos /** horizontal pos */, g_verPos /** vertical pos */,
-                    g_Effects ? 1 : 0 /** effect type */, 0.5 /** effect time */,
-                    0.75 /** duration */, 0.1 /** fade in time */, 0.1 /** fade out time */);
+                set_hudmessage(180 /** Red. */, 20 /** Green. */, 100 /** Blue. */,
+                    g_horPos /** Horizontal position. */, g_verPos /** Vertical position. */,
+                    g_Effects ? 1 : 0 /** Effect type. */, 0.5 /** Effect time. */,
+                    0.75 /** Duration. */, 0.1 /** Fade in time. */, 0.1 /** Fade out time. */);
                 ShowSyncHudMsg(Owner, g_Sync, Msg);
             }
             default:

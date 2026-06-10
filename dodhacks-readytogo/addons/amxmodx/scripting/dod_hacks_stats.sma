@@ -371,9 +371,36 @@ public endGameStats(){
   }
 }
 
+//public eInterMission()
+//  if ( isDSMActive() )
+//    set_task(1.0,"endGameStats")
+
+/**
+ * ---------
+ * DoD Hacks
+ * ---------
+ */
 public eInterMission()
-  if ( isDSMActive() )
-    set_task(1.0,"endGameStats")
+  if (isDSMActive())
+  {
+    set_task(1.0, "endGameStats");
+    static alliesStr[24], axisStr[24], bool: areAlliesBritish;
+#if defined _dodhacks_included
+    areAlliesBritish = DoD_AreAlliesBritish();
+#else
+    areAlliesBritish = bool: dod_get_map_info(MI_ALLIES_TEAM);
+#endif
+    addCommasInt(dod_get_team_score(ALLIES), alliesStr, charsmax(alliesStr));
+    addCommasInt(dod_get_team_score(AXIS),   axisStr,   charsmax(axisStr  ));
+    client_print(
+      0, print_chat,
+      areAlliesBritish ? "British %d (%s) -- (%s) %d Axis" : "Allies %d (%s) -- (%s) %d Axis",
+      g_RoundScore[0], alliesStr, axisStr, g_RoundScore[1]
+    );
+  }
+/**
+ * ---------
+ */
 
 public cmdStats(id){
   if ( !SayStatsAll || !isDSMActive() ){
@@ -563,19 +590,48 @@ public show_score(){
      * DoD Hacks
      * ---------
      */
-    static Msg[96], alliesStr[24], axisStr[24];
+    static Msg[96], alliesStr[24], axisStr[24], bool: areAlliesBritish;
+#if defined _dodhacks_included
+    areAlliesBritish = DoD_AreAlliesBritish();
+#else
+    areAlliesBritish = bool: dod_get_map_info(MI_ALLIES_TEAM);
+#endif
     addCommasInt(dod_get_team_score(ALLIES), alliesStr, charsmax(alliesStr));
-    addCommasInt(dod_get_team_score(AXIS), axisStr, charsmax(axisStr));
+    addCommasInt(dod_get_team_score(AXIS),   axisStr,   charsmax(axisStr  ));
     message_begin(MSG_BROADCAST, SVC_DIRECTOR, { 0, 0, 0 }, -1 /** A null entity (an invalid entity index). */);
     write_byte(
       formatex(
         Msg, sizeof Msg,
-        "Allies %d -- %d Axis^n(%s | %s)",
+        areAlliesBritish ? "British %d -- %d Axis^n(%s | %s)" : "Allies %d -- %d Axis^n(%s | %s)",
         g_RoundScore[0], g_RoundScore[1],
         alliesStr, axisStr
       ) + 31
     );
     fillAndEndDirectorMsg(Msg, 255, 100, 50, -1.0, 0.30, 5.0 /** Hold time (sec.). */);
+    if (g_RoundScore[0] > 999 || g_RoundScore[1] > 999)
+      client_print(
+        0, print_console,
+        areAlliesBritish ? "^nBritish: %4d (%s)^nAxis   : %4d (%s)" : "^nAllies: %4d (%s)^nAxis  : %4d (%s)",
+        g_RoundScore[0], alliesStr, g_RoundScore[1], axisStr
+      );
+    else if (g_RoundScore[0] > 99 || g_RoundScore[1] > 99)
+      client_print(
+        0, print_console,
+        areAlliesBritish ? "^nBritish: %3d (%s)^nAxis   : %3d (%s)" : "^nAllies: %3d (%s)^nAxis  : %3d (%s)",
+        g_RoundScore[0], alliesStr, g_RoundScore[1], axisStr
+      );
+    else if (g_RoundScore[0] > 9 || g_RoundScore[1] > 9)
+      client_print(
+        0, print_console,
+        areAlliesBritish ? "^nBritish: %2d (%s)^nAxis   : %2d (%s)" : "^nAllies: %2d (%s)^nAxis  : %2d (%s)",
+        g_RoundScore[0], alliesStr, g_RoundScore[1], axisStr
+      );
+    else
+      client_print(
+        0, print_console,
+        areAlliesBritish ? "^nBritish: %d (%s)^nAxis   : %d (%s)" : "^nAllies: %d (%s)^nAxis  : %d (%s)",
+        g_RoundScore[0], alliesStr, g_RoundScore[1], axisStr
+      );
     /**
      * ---------
      */

@@ -73,10 +73,10 @@ public OnPlayerTraceAttack_Post(Player, Attacker, Float: Damage, Float: Directio
         false == g_Fake[Attacker] && (false == g_TeamCheck || g_Team[Attacker] != g_Team[Player]) &&
         get_tr2(TraceRes, TR_iHitgroup) == HIT_HEAD)
     {
-        set_hudmessage(200 /** red */, 100 /** green */, 20 /** blue */,
-            g_HorPos /** horizontal pos */, g_VerPos /** vertical pos */,
-            g_Effects ? 1 : 0 /** effect type */, 0.5 /** effect time */,
-            1.0 /** duration */, 0.1 /** fade in time */, 0.1 /** fade out time */);
+        set_hudmessage(200 /** Red. */, 100 /** Green. */, 20 /** Blue. */,
+            g_HorPos /** Horizontal position. */, g_VerPos /** Vertical position. */,
+            g_Effects ? 1 : 0 /** Effect type. */, 0.5 /** Effect time. */,
+            1.0 /** Duration. */, 0.1 /** Fade in time. */, 0.1 /** Fade out time. */);
         ShowSyncHudMsg(Attacker, g_Sync, "HEAD!");
     }
 

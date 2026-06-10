@@ -25,7 +25,7 @@ public plugin_init()
         return PLUGIN_HANDLED;
     }
 
-    new Key[64], Val[2], Map[64],
+    new Key[64], Val[8], Map[64],
         genLighting[2] = { '?', EOS }, Lighting[2] = { '?', EOS };
     get_mapname(Map, charsmax(Map));
     while (fgets(Config, Buffer, charsmax(Buffer)) > 0)

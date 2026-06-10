@@ -305,10 +305,10 @@ Resume:
             case  8: R =  20, G = 200, B =  40; /// Green.
             default: R =  20, G = 180, B = 120; /// Teal.
         }
-        set_hudmessage(R /** red */, G /** green */, B /** blue */,
-            g_hudHorPos /** horizontal pos */, g_hudVerPos /** vertical pos */,
-            g_hudStyle ? 1 : 0 /** effect type */, 0.5 /** effect time */,
-            g_hudHoldTime /** duration */, 0.1 /** fade in time */, 0.1 /** fade out time */);
+        set_hudmessage(R /** Red. */, G /** Green. */, B /** Blue. */,
+            g_hudHorPos /** Horizontal position. */, g_hudVerPos /** Vertical position. */,
+            g_hudStyle ? 1 : 0 /** Effect type. */, 0.5 /** Effect time. */,
+            g_hudHoldTime /** Duration. */, 0.1 /** Fade in time. */, 0.1 /** Fade out time. */);
         ArrayGetString(g_arrayMsgs, g_msgIdx[Player]++,
             g_Buffer, charsmax(g_Buffer));
 #if defined replace_string

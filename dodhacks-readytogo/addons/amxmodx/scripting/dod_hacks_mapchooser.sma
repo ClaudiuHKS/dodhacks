@@ -640,10 +640,10 @@ public Task_BeginDecisionProcess()
     client_print(0, print_chat, "**** GET READY TO CHOOSE A MAP ****");
     if (g_hudMsgDecision)
     {
-        set_hudmessage(20 /** red */, 200 /** green */, 40 /** blue */,
-            g_hudHorPos /** horizontal pos */, g_hudVerPos /** vertical pos */,
-            g_hudStyle ? 1 : 0 /** effect type */, 0.5 /** effect time */,
-            AUDIO_DURATION /** duration */, 0.1 /** fade in time */, 0.1 /** fade out time */);
+        set_hudmessage(20 /** Red. */, 200 /** Green. */, 40 /** Blue. */,
+            g_hudHorPos /** Horizontal position. */, g_hudVerPos /** Vertical position. */,
+            g_hudStyle ? 1 : 0 /** Effect type. */, 0.5 /** Effect time. */,
+            AUDIO_DURATION /** Duration. */, 0.1 /** Fade in time. */, 0.1 /** Fade out time. */);
         ShowSyncHudMsg(0, g_hudSyncHandle, "GET READY TO VOTE!");
     }
     /**
@@ -671,10 +671,10 @@ public Task_BeginDecisionProcess()
 
 public Task_ShowDecisionProgress()
 {
-    set_hudmessage(20 /** red */, 180 /** green */, 200 /** blue */,
-        g_hudHorPos /** horizontal pos */, g_hudVerPos /** vertical pos */,
-        g_hudStyle ? 1 : 0 /** effect type */, 0.5 /** effect time */,
-        1.0 /** duration */, 0.1 /** fade in time */, 0.1 /** fade out time */);
+    set_hudmessage(20 /** Red. */, 180 /** Green. */, 200 /** Blue. */,
+        g_hudHorPos /** Horizontal position. */, g_hudVerPos /** Vertical position. */,
+        g_hudStyle ? 1 : 0 /** Effect type. */, 0.5 /** Effect time. */,
+        1.0 /** Duration. */, 0.1 /** Fade in time. */, 0.1 /** Fade out time. */);
     ShowSyncHudMsg(0, g_hudSyncHandle, "%-2d SEC. LEFT!", g_hudDisplaySecondsRemaining--);
 }
 
@@ -686,10 +686,10 @@ public Task_DisplayDecisionGreyMenu()
     if (g_hudMsgTimer)
     {
         g_hudDisplaySecondsRemaining = floatround(g_decisionDuration, floatround_tozero /** Truncate. */);
-        set_hudmessage(20 /** red */, 180 /** green */, 200 /** blue */,
-            g_hudHorPos /** horizontal pos */, g_hudVerPos /** vertical pos */,
-            g_hudStyle ? 1 : 0 /** effect type */, 0.5 /** effect time */,
-            1.0 /** duration */, 0.1 /** fade in time */, 0.1 /** fade out time */);
+        set_hudmessage(20 /** Red. */, 180 /** Green. */, 200 /** Blue. */,
+            g_hudHorPos /** Horizontal position. */, g_hudVerPos /** Vertical position. */,
+            g_hudStyle ? 1 : 0 /** Effect type. */, 0.5 /** Effect time. */,
+            1.0 /** Duration. */, 0.1 /** Fade in time. */, 0.1 /** Fade out time. */);
         ShowSyncHudMsg(0, g_hudSyncHandle, "%-2d SEC. LEFT!", g_hudDisplaySecondsRemaining--);
         set_task(1.0, "Task_ShowDecisionProgress", 0, "", 0, "a", g_hudDisplaySecondsRemaining);
     }
@@ -709,10 +709,10 @@ public Task_DisplayDecisionNormalMenu()
     if (g_hudMsgTimer)
     {
         g_hudDisplaySecondsRemaining = floatround(g_decisionDuration, floatround_tozero /** Truncate. */);
-        set_hudmessage(20 /** red */, 180 /** green */, 200 /** blue */,
-            g_hudHorPos /** horizontal pos */, g_hudVerPos /** vertical pos */,
-            g_hudStyle ? 1 : 0 /** effect type */, 0.5 /** effect time */,
-            1.0 /** duration */, 0.1 /** fade in time */, 0.1 /** fade out time */);
+        set_hudmessage(20 /** Red. */, 180 /** Green. */, 200 /** Blue. */,
+            g_hudHorPos /** Horizontal position. */, g_hudVerPos /** Vertical position. */,
+            g_hudStyle ? 1 : 0 /** Effect type. */, 0.5 /** Effect time. */,
+            1.0 /** Duration. */, 0.1 /** Fade in time. */, 0.1 /** Fade out time. */);
         ShowSyncHudMsg(0, g_hudSyncHandle, "%-2d SEC. LEFT!", g_hudDisplaySecondsRemaining--);
         set_task(1.0, "Task_ShowDecisionProgress", 0, "", 0, "a", g_hudDisplaySecondsRemaining);
     }
@@ -1059,10 +1059,10 @@ public OnMenuItem(Player, Menu, Item)
             client_print(Player, print_chat, "* You denominated %s.", Map[Name]);
             if (g_hudMsgNomination)
             {
-                set_hudmessage(200 /** red */, 20 /** green */, 20 /** blue */,
-                    g_hudHorPos /** horizontal pos */, g_hudVerPos /** vertical pos */,
-                    g_hudStyle ? 1 : 0 /** effect type */, 0.5 /** effect time */,
-                    2.0 /** duration */, 0.1 /** fade in time */, 0.1 /** fade out time */);
+                set_hudmessage(200 /** Red. */, 20 /** Green. */, 20 /** Blue. */,
+                    g_hudHorPos /** Horizontal position. */, g_hudVerPos /** Vertical position. */,
+                    g_hudStyle ? 1 : 0 /** Effect type. */, 0.5 /** Effect time. */,
+                    2.0 /** Duration. */, 0.1 /** Fade in time. */, 0.1 /** Fade out time. */);
                 ShowSyncHudMsg(Player, g_hudSyncHandle, "%s DENOMINATED!", Map[Name]);
             }
         }
@@ -1073,10 +1073,10 @@ public OnMenuItem(Player, Menu, Item)
             client_print(Player, print_chat, "* You nominated %s.", Map[Name]);
             if (g_hudMsgNomination)
             {
-                set_hudmessage(20 /** red */, 200 /** green */, 40 /** blue */,
-                    g_hudHorPos /** horizontal pos */, g_hudVerPos /** vertical pos */,
-                    g_hudStyle ? 1 : 0 /** effect type */, 0.5 /** effect time */,
-                    2.0 /** duration */, 0.1 /** fade in time */, 0.1 /** fade out time */);
+                set_hudmessage(20 /** Red. */, 200 /** Green. */, 40 /** Blue. */,
+                    g_hudHorPos /** Horizontal position. */, g_hudVerPos /** Vertical position. */,
+                    g_hudStyle ? 1 : 0 /** Effect type. */, 0.5 /** Effect time. */,
+                    2.0 /** Duration. */, 0.1 /** Fade in time. */, 0.1 /** Fade out time. */);
                 ShowSyncHudMsg(Player, g_hudSyncHandle, "%s NOMINATED!", Map[Name]);
             }
         }
@@ -1309,10 +1309,10 @@ bool: canDecide()
     if (floatround(Difference, floatround_tozero /** Truncate. */) ==
         g_secBeforeVoteToAnnounce + floatround(g_mapNeededSecondsRemaining, floatround_tozero /** Truncate. */))
     {
-        set_hudmessage(120 /** red */, 20 /** green */, 180 /** blue */,
-            g_hudHorPos /** horizontal pos */, g_hudVerPos /** vertical pos */,
-            g_hudStyle ? 1 : 0 /** effect type */, 0.5 /** effect time */,
-            3.5 /** duration */, 0.1 /** fade in time */, 0.1 /** fade out time */);
+        set_hudmessage(120 /** Red. */, 20 /** Green. */, 180 /** Blue. */,
+            g_hudHorPos /** Horizontal position. */, g_hudVerPos /** Vertical position. */,
+            g_hudStyle ? 1 : 0 /** Effect type. */, 0.5 /** Effect time. */,
+            3.5 /** Duration. */, 0.1 /** Fade in time. */, 0.1 /** Fade out time. */);
         ShowSyncHudMsg(0, g_hudSyncHandle, "%d SEC. TILL VOTE!", g_secBeforeVoteToAnnounce);
     }
     return Difference <= g_mapNeededSecondsRemaining;

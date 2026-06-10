@@ -439,10 +439,10 @@ public OnSetModel_Post(Entity)
             set_pev(Entity, ON_IMPACT_EXPLO_NADE_PROJ_KEY, ON_IMPACT_EXPLO_NADE_PROJ_VAL);
             if (g_hudMsgImpa && false == g_isFakePlayer[Owner])
             {
-                set_hudmessage(20 /** red */, 180 /** green */, 200 /** blue */,
-                    g_hudHorPosImpa /** horizontal pos */, g_hudVerPosImpa /** vertical pos */,
-                    g_hudStyleImpa ? 1 : 0 /** effect type */, 0.5 /** effect time */,
-                    1.0 /** duration */, 0.1 /** fade in time */, 0.1 /** fade out time */);
+                set_hudmessage(20 /** Red. */, 180 /** Green. */, 200 /** Blue. */,
+                    g_hudHorPosImpa /** Horizontal position. */, g_hudVerPosImpa /** Vertical position. */,
+                    g_hudStyleImpa ? 1 : 0 /** Effect type. */, 0.5 /** Effect time. */,
+                    1.0 /** Duration. */, 0.1 /** Fade in time. */, 0.1 /** Fade out time. */);
                 ShowSyncHudMsg(Owner, g_syncImpa, "IMPACT DETONATION!");
             }
         }
@@ -462,10 +462,10 @@ public client_command(Player)
             { /// No access.
                 if (false == g_isFakePlayer[Player])
                 {
-                    set_hudmessage(200 /** red */, 20 /** green */, 20 /** blue */,
-                        g_hudHorPosImpaCmd /** horizontal pos */, g_hudVerPosImpaCmd /** vertical pos */,
-                        g_hudStyleImpaCmd ? 1 : 0 /** effect type */, 0.5 /** effect time */,
-                        1.0 /** duration */, 0.1 /** fade in time */, 0.1 /** fade out time */);
+                    set_hudmessage(200 /** Red. */, 20 /** Green. */, 20 /** Blue. */,
+                        g_hudHorPosImpaCmd /** Horizontal position. */, g_hudVerPosImpaCmd /** Vertical position. */,
+                        g_hudStyleImpaCmd ? 1 : 0 /** Effect type. */, 0.5 /** Effect time. */,
+                        1.0 /** Duration. */, 0.1 /** Fade in time. */, 0.1 /** Fade out time. */);
                     ShowSyncHudMsg(Player, g_syncImpa, "NO ACCESS!");
                 }
                 return g_hideChatCmd ? PLUGIN_HANDLED : PLUGIN_CONTINUE;
@@ -489,10 +489,10 @@ public OnPlayerClConCmd_InstaNades(Player)
         if (false == g_isFakePlayer[Player])
         {
             console_print(Player, ">> NO ACCESS!");
-            set_hudmessage(200 /** red */, 20 /** green */, 20 /** blue */,
-                g_hudHorPosImpaCmd /** horizontal pos */, g_hudVerPosImpaCmd /** vertical pos */,
-                g_hudStyleImpaCmd ? 1 : 0 /** effect type */, 0.5 /** effect time */,
-                1.0 /** duration */, 0.1 /** fade in time */, 0.1 /** fade out time */);
+            set_hudmessage(200 /** Red. */, 20 /** Green. */, 20 /** Blue. */,
+                g_hudHorPosImpaCmd /** Horizontal position. */, g_hudVerPosImpaCmd /** Vertical position. */,
+                g_hudStyleImpaCmd ? 1 : 0 /** Effect type. */, 0.5 /** Effect time. */,
+                1.0 /** Duration. */, 0.1 /** Fade in time. */, 0.1 /** Fade out time. */);
             ShowSyncHudMsg(Player, g_syncImpa, "NO ACCESS!");
         }
         return PLUGIN_HANDLED;
@@ -791,10 +791,10 @@ manageExploNadePick(Player, Nade)
             Time = get_gametime();
             if (Time - g_pickTime[Player] >= 2.0)
                 g_hudChan[Player] = 0; /// Avoid a big vertical distance between two HUD msg.
-            set_hudmessage(20 /** red */, 200 /** green */, 40 /** blue */,
-                g_hudHorPos /** horizontal pos */, verMsgPosByChan(Player) /** vertical pos */,
-                g_hudStyle ? 1 : 0 /** effect type */, 0.5 /** effect time */,
-                2.0 /** duration */, 0.1 /** fade in time */, 0.1 /** fade out time */);
+            set_hudmessage(20 /** Red. */, 200 /** Green. */, 40 /** Blue. */,
+                g_hudHorPos /** Horizontal position. */, verMsgPosByChan(Player) /** Vertical position. */,
+                g_hudStyle ? 1 : 0 /** Effect type. */, 0.5 /** Effect time. */,
+                2.0 /** Duration. */, 0.1 /** Fade in time. */, 0.1 /** Fade out time. */);
             ShowSyncHudMsg(Player, g_hudSync[g_hudChan[Player]], "+1 EXPLO NADE!");
             g_pickTime[Player] = Time;
             if (++g_hudChan[Player] > 2)
@@ -810,20 +810,20 @@ showImpaStatus(Player, bool: Console)
     {
         case true:
         {
-            set_hudmessage(20 /** red */, 200 /** green */, 40 /** blue */,
-                g_hudHorPosImpaCmd /** horizontal pos */, g_hudVerPosImpaCmd /** vertical pos */,
-                g_hudStyleImpaCmd ? 1 : 0 /** effect type */, 0.5 /** effect time */,
-                1.0 /** duration */, 0.1 /** fade in time */, 0.1 /** fade out time */);
+            set_hudmessage(20 /** Red. */, 200 /** Green. */, 40 /** Blue. */,
+                g_hudHorPosImpaCmd /** Horizontal position. */, g_hudVerPosImpaCmd /** Vertical position. */,
+                g_hudStyleImpaCmd ? 1 : 0 /** Effect type. */, 0.5 /** Effect time. */,
+                1.0 /** Duration. */, 0.1 /** Fade in time. */, 0.1 /** Fade out time. */);
             ShowSyncHudMsg(Player, g_syncImpa, "IMPACT DETONATION ON!");
             if (Console)
                 console_print(Player, ">> IMPACT DETONATION ON!");
         }
         default:
         {
-            set_hudmessage(200 /** red */, 20 /** green */, 20 /** blue */,
-                g_hudHorPosImpaCmd /** horizontal pos */, g_hudVerPosImpaCmd /** vertical pos */,
-                g_hudStyleImpaCmd ? 1 : 0 /** effect type */, 0.5 /** effect time */,
-                1.0 /** duration */, 0.1 /** fade in time */, 0.1 /** fade out time */);
+            set_hudmessage(200 /** Red. */, 20 /** Green. */, 20 /** Blue. */,
+                g_hudHorPosImpaCmd /** Horizontal position. */, g_hudVerPosImpaCmd /** Vertical position. */,
+                g_hudStyleImpaCmd ? 1 : 0 /** Effect type. */, 0.5 /** Effect time. */,
+                1.0 /** Duration. */, 0.1 /** Fade in time. */, 0.1 /** Fade out time. */);
             ShowSyncHudMsg(Player, g_syncImpa, "IMPACT DETONATION OFF!");
             if (Console)
                 console_print(Player, ">> IMPACT DETONATION OFF!");
