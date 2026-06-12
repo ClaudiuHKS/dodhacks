@@ -1262,6 +1262,21 @@ native bool: DoD_IsWeaponGrenade(const Weapon[]);
 native bool: DoD_IsWeaponKnife(const Weapon[]);
 
 /**
+ * Sets pvPrivateData boolean value.
+ * Returns true if there are no errors.
+ * Returns false otherwise.
+ */
+native bool: DoD_SetPvDataBool(Entity, Ofs, bool: Value, linuxOfsAdd = 20);
+
+/**
+ * Gets pvPrivateData boolean value.
+ * Returns boolean value if there are
+ * no errors. Returns false otherwise
+ * and an error log is logged.
+ */
+native bool: DoD_GetPvDataBool(Entity, Ofs, linuxOfsAdd = 20);
+
+/**
  * Turns off the process of automatically
  * adding a scope to a freshly given
  * weapon_fg42 or weapon_enfield

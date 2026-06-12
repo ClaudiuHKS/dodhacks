@@ -5,10 +5,6 @@
 #include <dodconst>
 #include <dodhacks>
 
-#if !defined set_pdata_bool || !defined get_pdata_bool
-#error AMX Mod X version too old to handle dod_hacks_bots plugin! Consider upgrading! ('get_pdata_bool()' & 'set_pdata_bool()' are needed ...)
-#endif
-
 #define ofs_playerUsingRandomClass 1472
 
 new bool: g_allowSnipers;
@@ -69,7 +65,7 @@ public Task_UpdateFakePlayer_Once(Player)
     static Res;
     if (g_isPlayerFake[Player] && g_isPlayerInGame[Player])
     {
-        set_pdata_bool(Player, ofs_playerUsingRandomClass, true);
+        DoD_SetPvDataBool(Player, ofs_playerUsingRandomClass, true);
         DoD_ChooseRandomClass(Player, Res, true, false /** Don't update scores table with the class right now. */,
             false, false, DoD_RCA_Add, true);
     }
@@ -83,7 +79,7 @@ public DOD_ON_PLAYER_DISCONNECTED
 
 public DoD_OnPlayerSpawn_Post(DoD_Address: CDoDTeamPlay, Player)
     if (g_isPlayerFake[Player] && g_isPlayerInGame[Player])
-        set_pdata_bool(Player, ofs_playerUsingRandomClass, true);
+        DoD_SetPvDataBool(Player, ofs_playerUsingRandomClass, true);
 
 public DoD_OnChooseRandomClass_Post
 (DoD_Address: CDoDTeamPlay, Player, Res)

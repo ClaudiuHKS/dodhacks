@@ -477,8 +477,8 @@ bool g_selfNadeDoSolid = false;
 short g_selfNadeSolid = false;
 int g_selfNadeMode = false;
 int g_selfNadeFx = false;
-int g_selfNadeAmt = false;
 ::color24 g_selfNadeColor{ };
+int g_selfNadeAmt = false;
 bool g_exclSelfNadeGlow[33]{ };
 
 bool g_teamNade = false;
@@ -486,8 +486,8 @@ bool g_teamNadeDoSolid = false;
 short g_teamNadeSolid = false;
 int g_teamNadeMode = false;
 int g_teamNadeFx = false;
-int g_teamNadeAmt = false;
 ::color24 g_teamNadeColor{ };
+int g_teamNadeAmt = false;
 bool g_exclTeamNadeGlow[33]{ };
 
 bool g_droppedNade = false;
@@ -496,8 +496,8 @@ bool g_droppedNadeDoSolid = false;
 short g_droppedNadeSolid = false;
 int g_droppedNadeMode = false;
 int g_droppedNadeFx = false;
-int g_droppedNadeAmt = false;
 ::color24 g_droppedNadeColor{ };
+int g_droppedNadeAmt = false;
 bool g_exclDroppedNadeGlow[33]{ };
 
 ::SourceHook::CVector < ::SignatureData > g_Sigs{ };
@@ -638,23 +638,23 @@ bool edict_s_Ptr_From_client_s_Ptr_Offs(::size_t client_s, ::size_t& Offs, ::siz
 void sendPClass(::edict_s* pPlayer, int Player, int Class)
 {
     static auto PClass = ::gpMetaUtilFuncs->pfnGetUserMsgID(&::Plugin_info, "PClass", NULL);
-    ::g_engfuncs.pfnMessageBegin(pPlayer ? MSG_ONE_UNRELIABLE : MSG_BROADCAST, PClass, NULL, pPlayer);
-    ::g_engfuncs.pfnWriteByte(Player);
-    ::g_engfuncs.pfnWriteByte(Class);
-    ::g_engfuncs.pfnMessageEnd();
+    ::g_pEngineHookTable->pfnMessageBegin(pPlayer ? MSG_ONE_UNRELIABLE : MSG_BROADCAST, PClass, NULL, pPlayer);
+    ::g_pEngineHookTable->pfnWriteByte(Player);
+    ::g_pEngineHookTable->pfnWriteByte(Class);
+    ::g_pEngineHookTable->pfnMessageEnd();
 }
 
 void sendTextMsg(::edict_s* pPlayer, const char* pPhrase, const char* pArg1, const char* pArg2, const char* pArg3, const char* pArg4)
 {
     static auto TextMsg = ::gpMetaUtilFuncs->pfnGetUserMsgID(&::Plugin_info, "TextMsg", NULL);
-    ::g_engfuncs.pfnMessageBegin(pPlayer ? MSG_ONE_UNRELIABLE : MSG_BROADCAST, TextMsg, NULL, pPlayer);
-    ::g_engfuncs.pfnWriteByte(HUD_PRINTTALK);
-    ::g_engfuncs.pfnWriteString(pPhrase);
-    if (pArg1) ::g_engfuncs.pfnWriteString(pArg1);
-    if (pArg2) ::g_engfuncs.pfnWriteString(pArg2);
-    if (pArg3) ::g_engfuncs.pfnWriteString(pArg3);
-    if (pArg4) ::g_engfuncs.pfnWriteString(pArg4);
-    ::g_engfuncs.pfnMessageEnd();
+    ::g_pEngineHookTable->pfnMessageBegin(pPlayer ? MSG_ONE_UNRELIABLE : MSG_BROADCAST, TextMsg, NULL, pPlayer);
+    ::g_pEngineHookTable->pfnWriteByte(HUD_PRINTTALK);
+    ::g_pEngineHookTable->pfnWriteString(pPhrase);
+    if (pArg1) ::g_pEngineHookTable->pfnWriteString(pArg1);
+    if (pArg2) ::g_pEngineHookTable->pfnWriteString(pArg2);
+    if (pArg3) ::g_pEngineHookTable->pfnWriteString(pArg3);
+    if (pArg4) ::g_pEngineHookTable->pfnWriteString(pArg4);
+    ::g_pEngineHookTable->pfnMessageEnd();
 }
 
 bool playerActiveItem(::edict_s* pPlayer, int& activeItemIndex, bool& itemHasScopeAttached)
@@ -1284,7 +1284,7 @@ void CmdStart(::edict_s* pPlayer, ::usercmd_s* pCmd, ::size_t randomSeed)
     {
         if (pParam[6])
             ::sendTextMsg(pPlayer, pPlayer->v.deadflag || pPlayer->v.health <= 0.f ? "#game_respawn_asrandom" : "#game_spawn_asrandom",
-                ::classNameByClassIndex(Class), NULL, NULL, NULL);
+                NULL, NULL, NULL, NULL);
         else
             ::sendTextMsg(pPlayer, pPlayer->v.deadflag || pPlayer->v.health <= 0.f ? "#game_respawn_as" : "#game_spawn_as",
                 ::classNameByClassIndex(Class), NULL, NULL, NULL);
@@ -2543,6 +2543,67 @@ void CmdStart(::edict_s* pPlayer, ::usercmd_s* pCmd, ::size_t randomSeed)
         break;
     }
     }
+#endif
+    return true;
+}
+
+::cell DoD_GetPvDataBool_Native(::tagAMX* pAmx, ::cell* pParam)
+{
+    auto Entity = pParam[1];
+    if (Entity < 0 || Entity > ::gpGlobals->maxEntities)
+    {
+        ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "Invalid entity index %d!", Entity);
+        return false;
+    }
+
+    auto pEntity = ::F_IToE(Entity);
+    if (!pEntity)
+    {
+        ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "Entity %d has no edict!", Entity);
+        return false;
+    }
+
+    auto pEntityBase = (bool*)pEntity->pvPrivateData;
+    if (!pEntityBase)
+    {
+        ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "Entity %d has no private data!", Entity);
+        return false;
+    }
+
+#ifndef __linux__
+    return *(pEntityBase + pParam[2]);
+#else
+    return *(pEntityBase + pParam[2] + pParam[3]);
+#endif
+}
+
+::cell DoD_SetPvDataBool_Native(::tagAMX* pAmx, ::cell* pParam)
+{
+    auto Entity = pParam[1];
+    if (Entity < 0 || Entity > ::gpGlobals->maxEntities)
+    {
+        ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "Invalid entity index %d!", Entity);
+        return false;
+    }
+
+    auto pEntity = ::F_IToE(Entity);
+    if (!pEntity)
+    {
+        ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "Entity %d has no edict!", Entity);
+        return false;
+    }
+
+    auto pEntityBase = (bool*)pEntity->pvPrivateData;
+    if (!pEntityBase)
+    {
+        ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "Entity %d has no private data!", Entity);
+        return false;
+    }
+
+#ifndef __linux__
+    * (pEntityBase + pParam[2]) = (bool)pParam[3];
+#else
+    * (pEntityBase + pParam[2] + pParam[4]) = (bool)pParam[3];
 #endif
     return true;
 }
@@ -5140,6 +5201,9 @@ void DoD_Engine_EmitPings_Hook(::size_t client_s, ::size_t sizebuf_s)
     { "DoD_StoreGameRulesInt", ::DoD_StoreGameRulesInt_Native, },
     { "DoD_StoreGameRulesUInt", ::DoD_StoreGameRulesUInt_Native, },
     { "DoD_StoreGameRulesStr", ::DoD_StoreGameRulesStr_Native, },
+
+    { "DoD_GetPvDataBool", ::DoD_GetPvDataBool_Native, },
+    { "DoD_SetPvDataBool", ::DoD_SetPvDataBool_Native, },
 
     { "DoD_TraceLine", ::DoD_TraceLine_Native, },
     { "DoD_TraceLineComplex", ::DoD_TraceLineComplex_Native, },

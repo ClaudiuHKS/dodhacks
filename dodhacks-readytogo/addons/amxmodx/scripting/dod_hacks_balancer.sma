@@ -5,16 +5,13 @@
 #include <dodconst>
 #include <dodhacks>
 
-#if !defined set_pdata_bool || !defined get_pdata_bool
-#error AMX Mod X version too old to handle dod_hacks_balancer plugin! Consider upgrading! ('get_pdata_bool()' & 'set_pdata_bool()' are needed ...)
-#endif
-
 #define ofs_playerUsingRandomClass   1472 /// 'bool ::CBasePlayer::m_bIsRandomClass' variable.
 #define ofs_playerRecentlyChangedTeam 356 /// 'int  ::CBasePlayer::m_ilastteam'      variable.
 #define ofs_playerNextClass           367 /// 'int  ::CBasePlayer::m_iNextClass'     variable.
 
 new bool: g_exclUnclassed;
 new bool: g_showScreenFade;
+new bool: g_areAlliesBritish;
 new bool: g_showCustomMessage;
 new bool: g_isPlayerInServer[33];
 new g_Flag;
@@ -58,6 +55,7 @@ public plugin_init()
     fclose(Config);
 
     g_maxPlayers = get_maxplayers();
+    g_areAlliesBritish = DoD_AreAlliesBritish();
     if (g_showScreenFade)
         g_msgScreenFade = get_user_msgid("ScreenFade");
     g_multiPlayerTeamLimit = get_cvar_pointer("mp_teamlimit");
@@ -91,12 +89,12 @@ public Task_BalanceTeams()
         if (Allies > 0)
         {
             Player = Players[random_num(0, Allies - 1)];
-            Random = get_pdata_bool(Player, ofs_playerUsingRandomClass);
+            Random = DoD_GetPvDataBool(Player, ofs_playerUsingRandomClass);
             if (g_showCustomMessage)
             {
                 DoD_ChangePlayerTeam(Player, AXIS, false, false, true, true, false, true);
                 get_user_name(Player, Name, charsmax(Name));
-                client_print(0, print_chat, "* %s joined Axis to balance teams.", Name);
+                client_print(0, print_chat, "* %s joins Axis to balance teams.", Name);
             }
             else
                 DoD_ChangePlayerTeam(Player, AXIS, false, false, true, true, true, true);
@@ -114,12 +112,13 @@ public Task_BalanceTeams()
         if (Axis > 0)
         {
             Player = Players[random_num(0, Axis - 1)];
-            Random = get_pdata_bool(Player, ofs_playerUsingRandomClass);
+            Random = DoD_GetPvDataBool(Player, ofs_playerUsingRandomClass);
             if (g_showCustomMessage)
             {
                 DoD_ChangePlayerTeam(Player, ALLIES, false, false, true, true, false, true);
                 get_user_name(Player, Name, charsmax(Name));
-                client_print(0, print_chat, "* %s joined Allies to balance teams.", Name);
+                client_print(0, print_chat, "* %s joins %s to balance teams.",
+                    Name, g_areAlliesBritish ? "British" : "Allies");
             }
             else
                 DoD_ChangePlayerTeam(Player, ALLIES, false, false, true, true, true, true);
@@ -150,7 +149,7 @@ get_players_dod
 
 bool: isPlayerUnclassed(const &Player)
     return pev(Player, pev_playerclass) < DODC_GARAND &&
-        !get_pdata_bool(Player, ofs_playerUsingRandomClass) &&
+        !DoD_GetPvDataBool(Player, ofs_playerUsingRandomClass) &&
         get_pdata_int(Player, ofs_playerNextClass) < DODC_GARAND;
 
 doScreenFade(const &Player, Team, Float: Duration, Float: holdTime)
