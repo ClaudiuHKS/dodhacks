@@ -4,7 +4,7 @@
 #include <dodhacks>
 
 public plugin_init()
-    register_plugin("DoD Hacks: Key Values", "1.0.0.8", "Hattrick HKS (claudiuhks)");
+    register_plugin("DoD Hacks: Key Values", "1.0.1.0", "Hattrick HKS (claudiuhks)");
 
 public plugin_precache()
 {

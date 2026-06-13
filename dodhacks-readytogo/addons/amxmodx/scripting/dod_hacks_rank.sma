@@ -76,7 +76,7 @@ new bool: g_initiallyConnected = false;
 
 public plugin_init()
 {
-    register_plugin("DoD Hacks: Rank", "1.0.0.8", "Hattrick HKS (claudiuhks)");
+    register_plugin("DoD Hacks: Rank", "1.0.1.0", "Hattrick HKS (claudiuhks)");
 
     if (!safeIsSqlModuleRunning("sqlite") && !safeIsSqlModuleRunning("mysql"))
     {

@@ -52,7 +52,7 @@ new DoD_Address: g_wpnBoxKill = DoD_Address: DoD_Address_Null;
 
 public plugin_init()
 {
-    register_plugin("DoD Hacks: Knives", "1.0.0.8", "Hattrick HKS (claudiuhks)");
+    register_plugin("DoD Hacks: Knives", "1.0.1.0", "Hattrick HKS (claudiuhks)");
 
     new Buffer[256];
     get_configsdir(Buffer, charsmax(Buffer));

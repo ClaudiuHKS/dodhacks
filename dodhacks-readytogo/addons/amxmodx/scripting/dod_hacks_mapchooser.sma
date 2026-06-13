@@ -117,7 +117,7 @@ new Array: g_arrayMapsDecision;
 
 public plugin_init()
 {
-    register_plugin("DoD Hacks: Map Chooser", "1.0.0.8", "Hattrick HKS (claudiuhks)");
+    register_plugin("DoD Hacks: Map Chooser", "1.0.1.0", "Hattrick HKS (claudiuhks)");
 
     if (safeDisablePluginIfRunning("DoD.Hacks.MapChooser.LOG", "mapchooser.amxx") ||
         safeDisablePluginIfRunning("DoD.Hacks.MapChooser.LOG", "galileo.amxx"))

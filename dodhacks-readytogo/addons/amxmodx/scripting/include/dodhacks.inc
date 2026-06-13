@@ -1627,6 +1627,31 @@ native bool: DoD_BlockToPlayerCollision(Entity);
 native bool: DoD_UnblockFromPlayerCollision(Entity);
 
 /**
+ * Alters how dead
+ * player corpses work.
+ * Returns true if not
+ * already attached.
+ * Returns false
+ * otherwise.
+ *
+ * @PevFrameRate:        'float ::entvars_s::framerate' value to use during PlayerDeathThink() calls when 'float ::entvars_s::framerate' > 0.f already.
+ * @CBaseFrameRate:      'float ::CBasePlayer::m_flFrameRate' to use during PlayerDeathThink() calls.
+ * @RespawnFramesSub:    Value to subtract from 'float ::CBasePlayer::m_iRespawnFrames' on each PlayerDeathThink() call
+ *                       when 'float ::CBasePlayer::m_iRespawnFrames' > 0.f already.
+ * @AlterCBaseFrameRate: Whether to alter 'float ::CBasePlayer::m_flFrameRate' during PlayerDeathThink() calls.
+ * @EnableInterpolation: Whether to remove EF_NOINTERP effect from 'int ::entvars_s::effects' during PlayerDeathThink() calls.
+ */
+native bool: DoD_AddPlayerCorpseManager(Float: PevFrameRate, Float: CBaseFrameRate, Float: RespawnFramesSub, bool: AlterCBaseFrameRate, bool: EnableInterpolation);
+
+/**
+ * Detaches the function
+ * above. Returns true if
+ * was attached. False
+ * otherwise.
+ */
+native bool: DoD_DelPlayerCorpseManager();
+
+/**
  * Effects, installed on demand,
  * only if a plugin uses them.
  */

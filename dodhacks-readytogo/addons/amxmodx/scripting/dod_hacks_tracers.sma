@@ -26,7 +26,7 @@ new bool: g_isPlayerInServer[33];
 
 public plugin_init()
 {
-    register_plugin("DoD Hacks: Tracers", "1.0.0.8", "Hattrick HKS (claudiuhks)");
+    register_plugin("DoD Hacks: Tracers", "1.0.1.0", "Hattrick HKS (claudiuhks)");
 
     new Buffer[256];
     get_configsdir(Buffer, charsmax(Buffer));

@@ -8,7 +8,7 @@ new bool: g_isBetweenRounds = true;
 
 public plugin_init()
 {
-    register_plugin("DoD Hacks: Suicide", "1.0.0.8", "Hattrick HKS (claudiuhks)");
+    register_plugin("DoD Hacks: Suicide", "1.0.1.0", "Hattrick HKS (claudiuhks)");
 
     new Buffer[256];
     get_configsdir(Buffer, charsmax(Buffer));

@@ -107,7 +107,7 @@ new bool: g_initiallyConnected = false; /// Whether SQL server was online during
 
 public plugin_init()
 {
-    register_plugin("DoD Hacks: Nade Manager", "1.0.0.8", "Hattrick HKS (claudiuhks)");
+    register_plugin("DoD Hacks: Nade Manager", "1.0.1.0", "Hattrick HKS (claudiuhks)");
 
     get_configsdir(g_Buffer, charsmax(g_Buffer));
     add(g_Buffer, charsmax(g_Buffer), "/dod_hacks_nademanager.ini");

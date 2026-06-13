@@ -124,6 +124,8 @@ enum DoD_Sig : unsigned char
     Offs_CBasePlayer_RandomClass,
     Offs_CBasePlayer_LastTeam,
     Offs_CBasePlayer_ActiveItem,
+    Offs_CBasePlayer_RespawnFrames,
+    Offs_CBasePlayer_FrameRate,
 };
 
 enum DoD_Func : unsigned char
@@ -468,6 +470,12 @@ int g_fwEngine_WriteByte_Post = false;
 int g_fwEngine_WriteBits_Post = false;
 int g_fwEngine_EmitPings_Post = false;
 #endif
+
+float g_deadPlayerCorpsePevFrameRate = false;
+float g_deadPlayerCorpseCBaseFrameRate = false;
+float g_deadPlayerCorpseRespawnFramesSub = false;
+bool g_deadPlayerCorpseAlterCBaseFrameRate = false;
+bool g_deadPlayerCorpseEnableInterpolation = false;
 
 unsigned char* g_pAutoScopeFG42Addr = NULL;
 unsigned char* g_pAutoScopeEnfieldAddr = NULL;
@@ -961,13 +969,13 @@ int baseToIndex(::size_t CBase)
 }
 
 void ServerActivate(::edict_s* pEntities, int, int)
-{
+{ /// Always in-use.
     ::g_pEntities = pEntities;
     ::gpMetaGlobals->mres = ::META_RES::MRES_IGNORED;
 }
 
 void DispatchKeyValue(::edict_s* pEntity, ::KeyValueData* pKvData)
-{
+{ /// Always in-use.
     if (!pEntity)
     {
         ::gpMetaGlobals->mres = ::META_RES::MRES_IGNORED;
@@ -1030,6 +1038,31 @@ void DispatchKeyValue(::edict_s* pEntity, ::KeyValueData* pKvData)
         }
     }
     ::gpMetaGlobals->mres = ::META_RES::MRES_IGNORED;
+}
+
+void PlayerPostThink_Post(::edict_s* pPlayer)
+{ /// Only if a plugin enables this.
+    static ::entvars_s* pVars;
+    static unsigned char* pBase;
+    static float* pRespawnFrames;
+    pVars = &pPlayer->v;
+    if (pVars->deadflag || pVars->health <= 0.f)
+    {
+        if (::g_deadPlayerCorpseEnableInterpolation)
+            pVars->effects &= ~EF_NOINTERP;
+        pBase = (unsigned char*)pPlayer->pvPrivateData;
+        if (pBase)
+        {
+            pRespawnFrames = (float*)(pBase + ::g_Sigs[::DoD_Sig::Offs_CBasePlayer_RespawnFrames].Offs);
+            if (*pRespawnFrames > 0.f)
+                *pRespawnFrames -= ::g_deadPlayerCorpseRespawnFramesSub;
+            if (::g_deadPlayerCorpseAlterCBaseFrameRate)
+                *(float*)(pBase + ::g_Sigs[::DoD_Sig::Offs_CBasePlayer_FrameRate].Offs) = ::g_deadPlayerCorpseCBaseFrameRate;
+        }
+        if (pVars->framerate > 0.f)
+            pVars->framerate = ::g_deadPlayerCorpsePevFrameRate;
+    }
+    ::gpMetaGlobals->mres = ::MRES_IGNORED;
 }
 
 int AddToFullPack_Post
@@ -1102,7 +1135,7 @@ int AddToFullPack_Post
 }
 
 int ShouldCollide(::edict_s* pEntity, ::edict_s* pOther)
-{
+{ /// Only if a plugin enables this.
     ::gpMetaGlobals->mres =
         ((pEntity->v.flags & (FL_CLIENT | FL_FAKECLIENT)) && ::g_blockedFromPlayerCollision.hasVal(::F_EToI(pOther))) ||
         ((pOther->v.flags & (FL_CLIENT | FL_FAKECLIENT)) && ::g_blockedFromPlayerCollision.hasVal(::F_EToI(pEntity))) ?
@@ -1111,7 +1144,7 @@ int ShouldCollide(::edict_s* pEntity, ::edict_s* pOther)
 }
 
 void CmdStart(::edict_s* pPlayer, ::usercmd_s* pCmd, ::size_t randomSeed)
-{
+{ /// Only if a plugin enables this.
     static int Item;
     static bool scopeAttached;
     static ::entvars_s* pVars;
@@ -2799,6 +2832,34 @@ void CmdStart(::edict_s* pPlayer, ::usercmd_s* pCmd, ::size_t randomSeed)
     ::dlclose(pMod);
     return Res;
 #endif
+}
+
+::cell DoD_AddPlayerCorpseManager_Native(::tagAMX* pAmx, ::cell* pParam)
+{
+    if (!::g_pFunctionTable_Post->pfnPlayerPostThink)
+    {
+        ::g_pFunctionTable_Post->pfnPlayerPostThink = ::PlayerPostThink_Post;
+
+        ::g_deadPlayerCorpsePevFrameRate = ::g_fn_CellToReal(pParam[1]);
+        ::g_deadPlayerCorpseCBaseFrameRate = ::g_fn_CellToReal(pParam[2]);
+        ::g_deadPlayerCorpseRespawnFramesSub = ::g_fn_CellToReal(pParam[3]);
+        ::g_deadPlayerCorpseAlterCBaseFrameRate = bool(pParam[4]);
+        ::g_deadPlayerCorpseEnableInterpolation = bool(pParam[5]);
+
+        return true;
+    }
+    return false;
+}
+
+::cell DoD_DelPlayerCorpseManager_Native(::tagAMX* pAmx, ::cell* pParam)
+{
+    if (::g_pFunctionTable_Post->pfnPlayerPostThink)
+    {
+        ::g_pFunctionTable_Post->pfnPlayerPostThink = NULL;
+
+        return true;
+    }
+    return false;
 }
 
 ::cell DoD_AddSelfExploNadeProjGlow_Native(::tagAMX* pAmx, ::cell* pParam)
@@ -5214,6 +5275,9 @@ void DoD_Engine_EmitPings_Hook(::size_t client_s, ::size_t sizebuf_s)
     { "DoD_BlockToPlayerCollision", ::DoD_BlockToPlayerCollision_Native, },
     { "DoD_UnblockFromPlayerCollision", ::DoD_UnblockFromPlayerCollision_Native, },
 
+    { "DoD_AddPlayerCorpseManager", ::DoD_AddPlayerCorpseManager_Native, },
+    { "DoD_DelPlayerCorpseManager", ::DoD_DelPlayerCorpseManager_Native, },
+
     { "DoD_ChangeMap", ::DoD_ChangeMap_Native, },
     { "DoD_DeployItem", ::DoD_DeployItem_Native, },
     { "DoD_AllocString", ::DoD_AllocString_Native, },
@@ -7460,7 +7524,7 @@ void OnPluginsUnloaded()
     ::g_pFunctionTable->pfnCmdStart = NULL;
     ::g_pNewFunctionsTable->pfnShouldCollide = NULL;
     ::g_pFunctionTable_Post->pfnAddToFullPack = NULL;
-    ::g_pFunctionTable_Post->pfnClientPutInServer = NULL;
+    ::g_pFunctionTable_Post->pfnPlayerPostThink = NULL;
     ::g_Strings.clear();
     ::g_CustomKeyValues_Add.clear();
     ::g_CustomKeyValues_Del.clear();
