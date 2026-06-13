@@ -46,6 +46,5 @@ public plugin_init()
         pevFrameRate, cbaseFrameRate, respawnFramesSub,
         alterCBaseFrameRate, enableInterp
     );
-    set_msg_block(get_user_msgid("ClCorpse"), BLOCK_SET);
     return PLUGIN_CONTINUE;
 }
