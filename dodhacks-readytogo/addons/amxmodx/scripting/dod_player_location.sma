@@ -17,7 +17,7 @@
 /// the CSV files)
 ///
 
-#define DPL_VERSION "1.0.0.1"
+#define DPL_VERSION "1.0.0.2"
 
 #if !defined HUD_PRINTTALK
 #define      HUD_PRINTTALK 3
@@ -28,7 +28,7 @@
  */
 new g_historyRows;
 new bool: g_alterBots;
-new bool: g_fixTeamMsg;
+new bool: g_blockDefJoinMsg;
 new bool: g_areAlliesBritish;
 new Array: g_History;
 
@@ -81,16 +81,16 @@ public plugin_init()
                     g_isSvPrecise = true;
             }
         }
-        else if (equali(Key, "@include_player_distance"))
-            g_incDistance      = bool: str_to_num(Val);
-        else if (equali(Key, "@is_distance_imperial"))
-            g_isImperial       = bool: str_to_num(Val);
-        else if (equali(Key, "@distance_symbol_style"))
-            distanceSymStyle   =       str_to_num(Val);
-        else if (equali(Key, "@fix_team_message_too"))
-            g_fixTeamMsg       = bool: str_to_num(Val);
-        else if (equali(Key, "@alter_bots"))
-            g_alterBots        = bool: str_to_num(Val);
+        else if (equali(Key,  "@include_player_distance"))
+            g_incDistance     = bool: str_to_num(Val);
+        else if (equali(Key,  "@is_distance_imperial"))
+            g_isImperial      = bool: str_to_num(Val);
+        else if (equali(Key,  "@distance_symbol_style"))
+            distanceSymStyle  =       str_to_num(Val);
+        else if (equali(Key,  "@alter_bots"))
+            g_alterBots       = bool: str_to_num(Val);
+        else if (equali(Key,  "@block_def_join_msg"))
+            g_blockDefJoinMsg = bool: str_to_num(Val);
     }
     fclose(Config);
 
@@ -121,27 +121,19 @@ public On_Message_TextMsg(messageIndex, Destination)
     if (Args < 3 || Args > 4 || ARG_BYTE != get_msg_argtype(1) ||
         HUD_PRINTTALK != get_msg_arg_int(1) || ARG_STRING != get_msg_argtype(2) ||
         ARG_STRING != get_msg_argtype(3) ||
-        get_msg_arg_string(2, Phrase, charsmax(Phrase)) < 17 ||
-        (!equal(Phrase, "#game_joined_game") && !equal(Phrase, "#game_joined_team")))
+        get_msg_arg_string(2, Phrase, charsmax(Phrase)) < 17)
+        return PLUGIN_CONTINUE;
+    if (equal(Phrase, "#game_joined_game"))
+        return g_blockDefJoinMsg ? PLUGIN_HANDLED : PLUGIN_CONTINUE;
+    if (!equal(Phrase, "#game_joined_team") || get_msg_argtype(4) != ARG_STRING ||
+        get_msg_arg_string(4, Team, charsmax(Team)) < 2)
         return PLUGIN_CONTINUE;
     get_msg_arg_string(3, Name, charsmax(Name));
     Player = get_user_index(Name);
     if (Player < 1)
         return PLUGIN_CONTINUE;
-    if (Phrase[16] == 'm')
-    { /// Team change handler.
-        if (!g_fixTeamMsg || get_msg_argtype(4) != ARG_STRING ||
-            get_msg_arg_string(4, Team, charsmax(Team)) < 2)
-            return PLUGIN_CONTINUE;
-        switch (Team[1])
-        {
-            case 'p': client_print(0, print_chat, "* %s joins Spectators.", Name);
-            case 'x': client_print(0, print_chat, "* %s joins Axis.", Name);
-            default:  client_print(0, print_chat,
-                g_areAlliesBritish ? "* %s joins British." : "* %s joins Allies.", Name);
-        }
-        return PLUGIN_HANDLED;
-    } /// Game join handler.
+    if (g_areAlliesBritish && Team[1] == 'l' /** Allies. */)
+        copy(Team, charsmax(Team), "British");
     if (g_alterBots && is_user_bot(Player))
         formatex(Addr, charsmax(Addr), "%d.%d.%d.%d",
             random_num(0, 255), random_num(0, 255), random_num(0, 255), random_num(0, 255));
@@ -167,54 +159,54 @@ public On_Message_TextMsg(messageIndex, Destination)
     {
         case false:
             if (!Country[0] && !Region[0] && !City[0])
-                client_print(0, print_chat, "* %s joined.",
-                    Name);
+                client_print(0, print_chat, "* %s joins %s.",
+                    Name, Team);
             else if (Country[0] && Region[0] && City[0])
-                client_print(0, print_chat, "* %s joined from %s, %s, %s.",
-                    Name, Country, Region, City);
+                client_print(0, print_chat, "* %s joins %s from %s, %s, %s.",
+                    Name, Team, Country, Region, City);
             else if (!Country[0] && Region[0] && City[0])
-                client_print(0, print_chat, "* %s joined from %s, %s.",
-                    Name, Region, City);
+                client_print(0, print_chat, "* %s joins %s from %s, %s.",
+                    Name, Team, Region, City);
             else if (Country[0] && !Region[0] && City[0])
-                client_print(0, print_chat, "* %s joined from %s, %s.",
-                    Name, Country, City);
+                client_print(0, print_chat, "* %s joins %s from %s, %s.",
+                    Name, Team, Country, City);
             else if (Country[0] && Region[0] && !City[0])
-                client_print(0, print_chat, "* %s joined from %s, %s.",
-                    Name, Country, Region);
+                client_print(0, print_chat, "* %s joins %s from %s, %s.",
+                    Name, Team, Country, Region);
             else if (!Country[0] && !Region[0] && City[0])
-                client_print(0, print_chat, "* %s joined from %s.",
-                    Name, City);
+                client_print(0, print_chat, "* %s joins %s from %s.",
+                    Name, Team, City);
             else if (Country[0] && !Region[0] && !City[0])
-                client_print(0, print_chat, "* %s joined from %s.",
-                    Name, Country);
+                client_print(0, print_chat, "* %s joins %s from %s.",
+                    Name, Team, Country);
             else
-                client_print(0, print_chat, "* %s joined from %s.",
-                    Name, Region);
+                client_print(0, print_chat, "* %s joins %s from %s.",
+                    Name, Team, Region);
         default:
             if (!Country[0] && !Region[0] && !City[0])
-                client_print(0, print_chat, "* %s joined.",
-                    Name);
+                client_print(0, print_chat, "* %s joins %s.",
+                    Name, Team);
             else if (Country[0] && Region[0] && City[0])
-                client_print(0, print_chat, "* %s joined from %s, %s, %s (%s).",
-                    Name, Country, Region, City, Distance);
+                client_print(0, print_chat, "* %s joins %s from %s, %s, %s (%s).",
+                    Name, Team, Country, Region, City, Distance);
             else if (!Country[0] && Region[0] && City[0])
-                client_print(0, print_chat, "* %s joined from %s, %s (%s).",
-                    Name, Region, City, Distance);
+                client_print(0, print_chat, "* %s joins %s from %s, %s (%s).",
+                    Name, Team, Region, City, Distance);
             else if (Country[0] && !Region[0] && City[0])
-                client_print(0, print_chat, "* %s joined from %s, %s (%s).",
-                    Name, Country, City, Distance);
+                client_print(0, print_chat, "* %s joins %s from %s, %s (%s).",
+                    Name, Team, Country, City, Distance);
             else if (Country[0] && Region[0] && !City[0])
-                client_print(0, print_chat, "* %s joined from %s, %s (%s).",
-                    Name, Country, Region, Distance);
+                client_print(0, print_chat, "* %s joins %s from %s, %s (%s).",
+                    Name, Team, Country, Region, Distance);
             else if (!Country[0] && !Region[0] && City[0])
-                client_print(0, print_chat, "* %s joined from %s (%s).",
-                    Name, City, Distance);
+                client_print(0, print_chat, "* %s joins %s from %s (%s).",
+                    Name, Team, City, Distance);
             else if (Country[0] && !Region[0] && !City[0])
-                client_print(0, print_chat, "* %s joined from %s (%s).",
-                    Name, Country, Distance);
+                client_print(0, print_chat, "* %s joins %s from %s (%s).",
+                    Name, Team, Country, Distance);
             else
-                client_print(0, print_chat, "* %s joined from %s (%s).",
-                    Name, Region, Distance);
+                client_print(0, print_chat, "* %s joins %s from %s (%s).",
+                    Name, Team, Region, Distance);
     }
     if ((Country[0] || Region[0] || City[0]) && ArrayFindString(g_History, Name) < 0)
     {
@@ -308,10 +300,10 @@ public plugin_init()
         if (!Buffer[0] || Buffer[0] == ';' || Buffer[0] == '/' ||
             2 != parse(Buffer, Key, charsmax(Key), Val, charsmax(Val)))
             continue;
-        if (equali(Key, "@fix_team_message_too"))
-            g_fixTeamMsg = bool: str_to_num(Val);
-        else if (equali(Key, "@alter_bots"))
-            g_alterBots  = bool: str_to_num(Val);
+        if (equali(Key,       "@alter_bots"))
+            g_alterBots       = bool: str_to_num(Val);
+        else if (equali(Key,  "@block_def_join_msg"))
+            g_blockDefJoinMsg = bool: str_to_num(Val);
     }
     fclose(Config);
 
@@ -332,27 +324,19 @@ public On_Message_TextMsg(messageIndex, Destination)
     if (Args < 3 || Args > 4 || ARG_BYTE != get_msg_argtype(1) ||
         HUD_PRINTTALK != get_msg_arg_int(1) || ARG_STRING != get_msg_argtype(2) ||
         ARG_STRING != get_msg_argtype(3) ||
-        get_msg_arg_string(2, Phrase, charsmax(Phrase)) < 17 ||
-        (!equal(Phrase, "#game_joined_game") && !equal(Phrase, "#game_joined_team")))
+        get_msg_arg_string(2, Phrase, charsmax(Phrase)) < 17)
+        return PLUGIN_CONTINUE;
+    if (equal(Phrase, "#game_joined_game"))
+        return g_blockDefJoinMsg ? PLUGIN_HANDLED : PLUGIN_CONTINUE;
+    if (!equal(Phrase, "#game_joined_team") || get_msg_argtype(4) != ARG_STRING ||
+        get_msg_arg_string(4, Team, charsmax(Team)) < 2)
         return PLUGIN_CONTINUE;
     get_msg_arg_string(3, Name, charsmax(Name));
     Player = get_user_index(Name);
     if (Player < 1)
         return PLUGIN_CONTINUE;
-    if (Phrase[16] == 'm')
-    { /// Team change handler.
-        if (!g_fixTeamMsg || get_msg_argtype(4) != ARG_STRING ||
-            get_msg_arg_string(4, Team, charsmax(Team)) < 2)
-            return PLUGIN_CONTINUE;
-        switch (Team[1])
-        {
-            case 'p': client_print(0, print_chat, "* %s joins Spectators.", Name);
-            case 'x': client_print(0, print_chat, "* %s joins Axis.", Name);
-            default:  client_print(0, print_chat,
-                g_areAlliesBritish ? "* %s joins British." : "* %s joins Allies.", Name);
-        }
-        return PLUGIN_HANDLED;
-    } /// Game join handler.
+    if (g_areAlliesBritish && Team[1] == 'l' /** Allies. */)
+        copy(Team, charsmax(Team), "British");
     if (g_alterBots && is_user_bot(Player))
         formatex(Addr, charsmax(Addr), "%d.%d.%d.%d",
             random_num(0, 255), random_num(0, 255), random_num(0, 255), random_num(0, 255));
@@ -360,9 +344,9 @@ public On_Message_TextMsg(messageIndex, Destination)
         get_user_ip(Player, Addr, charsmax(Addr), 1);
     geoip_country(Addr, Country, charsmax(Country));
     if (!Country[0])
-        client_print(0, print_chat, "* %s joined.", Name);
+        client_print(0, print_chat, "* %s joins %s.", Name, Team);
     else
-        client_print(0, print_chat, "* %s joined from %s.", Name, Country);
+        client_print(0, print_chat, "* %s joins %s from %s.", Name, Team, Country);
     if (Country[0] && ArrayFindString(g_History, Name) < 0)
     {
         formatex(Row, charsmax(Row), "%-31s %s", Name, Country);
@@ -418,4 +402,6 @@ public On_ConsoleCmd_Locations(Player, Level, Command)
  * Changes
  * -------
  * v1.0.0.1 @ Jun 11 '26 => Replace `switch (Team[2])` with `switch (Team[1])` (bug fix).
+ * v1.0.0.2 @ Jun 13 '26 => Optionally disable #game_join_game message and display geo.
+ *                          location in #game_join_team message to reduce chat spam.
  */
