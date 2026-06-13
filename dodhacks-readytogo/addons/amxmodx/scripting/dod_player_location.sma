@@ -29,6 +29,7 @@
 new g_historyRows;
 new bool: g_alterBots;
 new bool: g_blockDefJoinMsg;
+new bool: g_blockDefLeaveMsg;
 new bool: g_areAlliesBritish;
 new Array: g_History;
 
@@ -81,16 +82,18 @@ public plugin_init()
                     g_isSvPrecise = true;
             }
         }
-        else if (equali(Key,  "@include_player_distance"))
-            g_incDistance     = bool: str_to_num(Val);
-        else if (equali(Key,  "@is_distance_imperial"))
-            g_isImperial      = bool: str_to_num(Val);
-        else if (equali(Key,  "@distance_symbol_style"))
-            distanceSymStyle  =       str_to_num(Val);
-        else if (equali(Key,  "@alter_bots"))
-            g_alterBots       = bool: str_to_num(Val);
-        else if (equali(Key,  "@block_def_join_msg"))
-            g_blockDefJoinMsg = bool: str_to_num(Val);
+        else if (equali(Key,   "@include_player_distance"))
+            g_incDistance      = bool: str_to_num(Val);
+        else if (equali(Key,   "@is_distance_imperial"))
+            g_isImperial       = bool: str_to_num(Val);
+        else if (equali(Key,   "@distance_symbol_style"))
+            distanceSymStyle   =       str_to_num(Val);
+        else if (equali(Key,   "@alter_bots"))
+            g_alterBots        = bool: str_to_num(Val);
+        else if (equali(Key,   "@block_def_join_msg"))
+            g_blockDefJoinMsg  = bool: str_to_num(Val);
+        else if (equali(Key,   "@block_def_leave_msg"))
+            g_blockDefLeaveMsg = bool: str_to_num(Val);
     }
     fclose(Config);
 
@@ -125,6 +128,8 @@ public On_Message_TextMsg(messageIndex, Destination)
         return PLUGIN_CONTINUE;
     if (equal(Phrase, "#game_joined_game"))
         return g_blockDefJoinMsg ? PLUGIN_HANDLED : PLUGIN_CONTINUE;
+    if (equal(Phrase, "#game_disconnected"))
+        return g_blockDefLeaveMsg ? PLUGIN_HANDLED : PLUGIN_CONTINUE;
     if (!equal(Phrase, "#game_joined_team") || get_msg_argtype(4) != ARG_STRING ||
         get_msg_arg_string(4, Team, charsmax(Team)) < 2)
         return PLUGIN_CONTINUE;
@@ -300,10 +305,12 @@ public plugin_init()
         if (!Buffer[0] || Buffer[0] == ';' || Buffer[0] == '/' ||
             2 != parse(Buffer, Key, charsmax(Key), Val, charsmax(Val)))
             continue;
-        if (equali(Key,       "@alter_bots"))
-            g_alterBots       = bool: str_to_num(Val);
-        else if (equali(Key,  "@block_def_join_msg"))
-            g_blockDefJoinMsg = bool: str_to_num(Val);
+        if (equali(Key,        "@alter_bots"))
+            g_alterBots        = bool: str_to_num(Val);
+        else if (equali(Key,   "@block_def_join_msg"))
+            g_blockDefJoinMsg  = bool: str_to_num(Val);
+        else if (equali(Key,   "@block_def_leave_msg"))
+            g_blockDefLeaveMsg = bool: str_to_num(Val);
     }
     fclose(Config);
 
@@ -328,6 +335,8 @@ public On_Message_TextMsg(messageIndex, Destination)
         return PLUGIN_CONTINUE;
     if (equal(Phrase, "#game_joined_game"))
         return g_blockDefJoinMsg ? PLUGIN_HANDLED : PLUGIN_CONTINUE;
+    if (equal(Phrase, "#game_disconnected"))
+        return g_blockDefLeaveMsg ? PLUGIN_HANDLED : PLUGIN_CONTINUE;
     if (!equal(Phrase, "#game_joined_team") || get_msg_argtype(4) != ARG_STRING ||
         get_msg_arg_string(4, Team, charsmax(Team)) < 2)
         return PLUGIN_CONTINUE;
