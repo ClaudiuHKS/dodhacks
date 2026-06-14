@@ -1,8 +1,7 @@
 
 #include <amxmodx>
 #include <amxmisc>
-#include <fakemeta>
-#include <hamsandwich>
+#include <dodx>
 #include <dodhacks>
 
 new g_Sync;
@@ -48,11 +47,6 @@ public plugin_init()
     }
     fclose(Config);
 
-#if defined amxclient_cmd && defined RegisterHamPlayer
-    RegisterHamPlayer(Ham_TraceAttack, "OnPlayerTraceAttack_Post", true);
-#else
-    RegisterHam(Ham_TraceAttack, "player", "OnPlayerTraceAttack_Post", true);
-#endif
     g_MaxPlayers = get_maxplayers();
     g_Sync = CreateHudSyncObj();
     return PLUGIN_CONTINUE;
@@ -68,10 +62,9 @@ public DoD_OnPlayerSpawn_Post(DoD_Address: CDoDTeamPlay, Player)
     if (g_TeamCheck && g_InSrv[Player])
         g_Team[Player] = get_user_team(Player);
 
-public OnPlayerTraceAttack_Post(Player, Attacker, Float: Damage, Float: Direction[3], TraceRes)
-    if (TraceRes && Attacker > 0 && Attacker <= g_MaxPlayers && g_InSrv[Attacker] &&
-        false == g_Fake[Attacker] && (false == g_TeamCheck || g_Team[Attacker] != g_Team[Player]) &&
-        get_tr2(TraceRes, TR_iHitgroup) == HIT_HEAD)
+public client_damage(Attacker, Victim, Damage, weaponIndex, Place, isTeamAttack)
+    if (HIT_HEAD == Place && Attacker > 0 && Attacker <= g_MaxPlayers && g_InSrv[Attacker] &&
+        false == g_Fake[Attacker] && (false == g_TeamCheck || g_Team[Attacker] != g_Team[Victim]))
     {
         set_hudmessage(200 /** Red. */, 100 /** Green. */, 20 /** Blue. */,
             g_HorPos /** Horizontal position. */, g_VerPos /** Vertical position. */,

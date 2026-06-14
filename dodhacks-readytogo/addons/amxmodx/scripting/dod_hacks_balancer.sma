@@ -13,6 +13,7 @@ new bool: g_exclUnclassed;
 new bool: g_showScreenFade;
 new bool: g_areAlliesBritish;
 new bool: g_showCustomMessage;
+new bool: g_isPlayerFake[33];
 new bool: g_isPlayerInServer[33];
 new g_Flag;
 new g_maxPlayers;
@@ -70,10 +71,16 @@ public plugin_init()
 #endif
 
 public DOD_ON_PLAYER_DISCONNECTED
+{
     g_isPlayerInServer[Player] = false;
+    g_isPlayerFake[Player] = false;
+}
 
 public client_putinserver(Player)
+{
     g_isPlayerInServer[Player] = true;
+    g_isPlayerFake[Player] = bool: is_user_bot(Player);
+}
 
 public Task_BalanceTeams()
 {
@@ -98,12 +105,22 @@ public Task_BalanceTeams()
             }
             else
                 DoD_ChangePlayerTeam(Player, AXIS, false, false, true, true, true, true);
-            if (Random)
-                DoD_ChooseRandomClass(Player, Class, true, true, true, true, DoD_RCA_Add);
+            if (g_isPlayerFake[Player])
+            {
+                if (Random)
+                    DoD_ChooseRandomClass(Player, Class, true, true, false, false, DoD_RCA_Add);
+                else
+                    DoD_ChooseRandomClass(Player, Class, true, true, false, false, DoD_RCA_Remove);
+            }
             else
-                DoD_ChooseRandomClass(Player, Class, true, true, true, false, DoD_RCA_Remove);
-            if (g_showScreenFade)
-                doScreenFade(Player, AXIS, 0.15, 0.20);
+            {
+                if (Random)
+                    DoD_ChooseRandomClass(Player, Class, true, true, true, true, DoD_RCA_Add);
+                else
+                    DoD_ChooseRandomClass(Player, Class, true, true, true, false, DoD_RCA_Remove);
+                if (g_showScreenFade)
+                    doScreenFade(Player, AXIS, 0.15, 0.20);
+            }
         }
     }
     else if (Axis - Allies > maxAllowedDifference)
@@ -122,12 +139,22 @@ public Task_BalanceTeams()
             }
             else
                 DoD_ChangePlayerTeam(Player, ALLIES, false, false, true, true, true, true);
-            if (Random)
-                DoD_ChooseRandomClass(Player, Class, true, true, true, true, DoD_RCA_Add);
+            if (g_isPlayerFake[Player])
+            {
+                if (Random)
+                    DoD_ChooseRandomClass(Player, Class, true, true, false, false, DoD_RCA_Add);
+                else
+                    DoD_ChooseRandomClass(Player, Class, true, true, false, false, DoD_RCA_Remove);
+            }
             else
-                DoD_ChooseRandomClass(Player, Class, true, true, true, false, DoD_RCA_Remove);
-            if (g_showScreenFade)
-                doScreenFade(Player, ALLIES, 0.15, 0.20);
+            {
+                if (Random)
+                    DoD_ChooseRandomClass(Player, Class, true, true, true, true, DoD_RCA_Add);
+                else
+                    DoD_ChooseRandomClass(Player, Class, true, true, true, false, DoD_RCA_Remove);
+                if (g_showScreenFade)
+                    doScreenFade(Player, ALLIES, 0.15, 0.20);
+            }
         }
     }
     return PLUGIN_HANDLED;

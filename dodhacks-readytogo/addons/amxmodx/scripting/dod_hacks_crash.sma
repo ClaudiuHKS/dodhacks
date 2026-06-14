@@ -2,11 +2,11 @@
 #include <amxmodx>
 #include <amxmisc>
 
-#define TaskOffs_QueryClientCvar    67108736 /// -128+2^26 value will be used as player unique user index task offset.
-#define TaskOffs_ClientPutInServer   8388735 ///  127+2^23 value will be used as player unique user index task offset.
+#define TaskOffs_QueryClientCvar  67108736 /// -128+2^26 value will be used as player unique user index task offset.
+#define TaskOffs_ClientPutInServer 8388735 ///  127+2^23 value will be used as player unique user index task offset.
 
-new g_playerUniqueUserIndex[33] = { -1, ... };
-new bool: g_isPlayerInServer[33] = { false, ... };
+new g_playerUniqueUserIndex[33]      = { -1,            ... };
+new bool: g_isPlayerInServer[33]     = { false,         ... };
 new Array: g_playerNotifications[33] = { Invalid_Array, ... };
 new Float: g_minNotifySeconds;
 new Float: g_maxNotifySeconds;
@@ -71,6 +71,7 @@ public Task_QueryPlayerConVars_Delayed(taskIndex)
 #endif
     if (g_isPlayerInServer[Player])
     {
+        query_client_cvar(Player, "joystick",      "onPlayerConVarCheck", sizeof Arg, Arg);
         query_client_cvar(Player, "mp_decals",     "onPlayerConVarCheck", sizeof Arg, Arg);
         query_client_cvar(Player, "sp_decals",     "onPlayerConVarCheck", sizeof Arg, Arg);
         query_client_cvar(Player, "cl_particlefx", "onPlayerConVarCheck", sizeof Arg, Arg);
@@ -161,10 +162,24 @@ public onPlayerConVarCheck(Player, const Key[], const Val[], const Arg[])
                         g_playerUniqueUserIndex[Player] + TaskOffs_QueryClientCvar);
                 }
             }
+            case 'j', 'J':
+            {
+                Value = str_to_num(Val);
+                if (Value)
+                {
+                    formatex(Msg, charsmax(Msg),
+                        "* Your '%s' cvar is enabled (%d/ 1). If you have problems pronning, consider disabling.",
+                        Key, Value);
+                    createPlayerMsgArrayIfNeeded(Player, sizeof Msg);
+                    ArrayPushString(g_playerNotifications[Player], Msg);
+                    set_task(random_float(g_minNotifySeconds, g_maxNotifySeconds), "Task_NotifyPlayer_Delayed",
+                        g_playerUniqueUserIndex[Player] + TaskOffs_QueryClientCvar);
+                }
+            }
             case 'c', 'C':
             {
                 Value = str_to_num(Val);
-                if (Value > 0)
+                if (Value)
                 {
                     formatex(Msg, charsmax(Msg),
                         "* Your '%s' cvar is turned on (%d/ 2). If you crash, consider disabling.",
@@ -187,7 +202,8 @@ readPlayerFromUniqueUserIndex(playerUniqueUserIndex)
 { /// Older AMXX versions need something like this.
     static Player;
     for (Player = 1; Player <= g_maxPlayers; Player++)
-        if (playerUniqueUserIndex == g_playerUniqueUserIndex[Player])
+        if (g_isPlayerInServer[Player] &&
+            playerUniqueUserIndex == g_playerUniqueUserIndex[Player])
             return Player;
     return 0;
 }

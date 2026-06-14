@@ -109,12 +109,10 @@ public plugin_init()
     RegisterHam(Ham_Item_PreFrame, "weapon_spade",     "OnSpade_ItemPreFrame_Pre"    );
     RegisterHam(Ham_Item_PreFrame, "weapon_gerknife",  "OnGerKnife_ItemPreFrame_Pre" );
     RegisterHam(Ham_Item_PreFrame, "weapon_amerknife", "OnAmerKnife_ItemPreFrame_Pre");
-    register_forward(FM_SetModel,     "OnSetModel_Pre"           );
-    register_forward(FM_RemoveEntity, "OnRemoveEntity_Post", true);
+    register_forward(FM_SetModel, "OnSetModel_Pre");
     register_event("RoundState", "OnRoundBeginFreezeEnd", "a", "1=1"       );
     register_event("RoundState", "OnRoundEnd",            "a", "1=3", "1=4");
     register_message(SVC_INTERMISSION /** 30 */, "OnMsgIntermission");
-    DoD_HookShouldCollide();
     g_msgBlood =   get_user_msgid("BloodPuff");
     g_msgHealth =  get_user_msgid("Health");
     g_maxPlayers = get_maxplayers();
@@ -208,15 +206,6 @@ public OnPlayer_Killed_Post(Player)
     g_isPlayerAwaiting[Player] = false;
 }
 
-public OnRemoveEntity_Post(Entity)
-    DoD_UnblockFromPlayerCollision(Entity);
-
-public DoD_OnSubRemove_Post(Entity)
-    DoD_UnblockFromPlayerCollision(Entity);
-
-public DoD_OnUtilRemove_Post(Entity)
-    DoD_UnblockFromPlayerCollision(Entity);
-
 public OnSpade_ItemPreFrame_Pre(Item)
 {
     static Owner;
@@ -268,7 +257,7 @@ public OnWeaponBox_Think_Pre(Entity)
     Owner = pev(Entity, pev_owner);
     if (!isPlayerEntity(Owner) || !g_isPlayerInServer[Owner]) /// Gets removed right away if it has no owner.
     { /// Insta-removing during Think() should work just fine.
-        killWeaponBox(Entity);
+        DoD_WpnBoxKill(Entity);
         return HAM_SUPERCEDE;
     }
     return HAM_IGNORED; /// Keep thinking, if valid owner.
@@ -282,7 +271,7 @@ public OnWeaponBox_Touch_Pre(weaponBox, Entity)
     Owner = pev(weaponBox, pev_owner);
     if (g_isBetweenRounds || !isPlayerEntity(Owner) || !g_isPlayerInServer[Owner])
     { /// Insta-removing during Touch() should work just fine.
-        killWeaponBox(weaponBox);
+        DoD_WpnBoxKill(weaponBox);
         return HAM_SUPERCEDE;
     }
     else if (Entity == Owner)
@@ -308,7 +297,7 @@ public OnWeaponBox_Touch_Pre(weaponBox, Entity)
             if (Time > g_playerSpawnTime[Owner])
                 g_canPlayerThrow[Owner] = false;
         }
-        killWeaponBox(weaponBox);
+        DoD_WpnBoxKill(weaponBox);
         g_isPlayerAwaiting[Owner] = false;
         return HAM_SUPERCEDE;
     }
@@ -336,7 +325,7 @@ public OnWeaponBox_Touch_Pre(weaponBox, Entity)
             if (Time > g_playerSpawnTime[Owner])
                 g_canPlayerThrow[Owner] = false;
         }
-        killWeaponBox(weaponBox);
+        DoD_WpnBoxKill(weaponBox);
         g_isPlayerAwaiting[Owner] = false;
         return HAM_SUPERCEDE;
     }
@@ -361,7 +350,7 @@ handlePlayerAttack:
                 ExecuteHamB(Ham_TakeDamage, Entity, Owner, Owner, takeDamage, DMG_SLASH);
                 sendHealthMsgNotifyingDoDXStats(Entity); /// Save kill as knife kill and update player rank.
                 pev(weaponBox, ThrowingKnives_EntityKeyForTime, Time);
-                killWeaponBox(weaponBox);
+                DoD_WpnBoxKill(weaponBox);
                 if ((false == g_infiniteAttacks || false == g_infiniteAttempts) && Time > g_playerSpawnTime[Owner])
                     g_canPlayerThrow[Owner] = false;
             }
@@ -376,7 +365,7 @@ handlePlayerAttack:
                     if (Time > g_playerSpawnTime[Owner])
                         g_canPlayerThrow[Owner] = false;
                 }
-                killWeaponBox(weaponBox);
+                DoD_WpnBoxKill(weaponBox);
             }
             g_isPlayerAwaiting[Owner] = false;
             return HAM_SUPERCEDE;
@@ -387,7 +376,7 @@ handlePlayerAttack:
             if (Time > g_playerSpawnTime[Owner])
                 g_canPlayerThrow[Owner] = false;
         }
-        killWeaponBox(weaponBox);
+        DoD_WpnBoxKill(weaponBox);
         g_isPlayerAwaiting[Owner] = false;
         return HAM_SUPERCEDE;
     }
@@ -481,7 +470,6 @@ public OnSetModel_Pre(Entity)
                     else
                         Angles[0] += g_pitchAngleOffs_GerKnife;
                     Angles[2] += 90.0; /// Really required.
-                    DoD_BlockToPlayerCollision(Entity);
                     emit_sound(Owner, CHAN_WEAPON, 1 == random_num(1, 2) ?
                         "weapons/knifeswing.wav" : "weapons/knifeswing2.wav", VOL_NORM, ATTN_NORM, 0, PITCH_NORM);
                     set_pev(Entity, pev_angles, Angles);
@@ -517,7 +505,7 @@ public Task_RemoveWeaponBox_Delayed(taskIndex)
     if (g_wpnBoxKill != DoD_GetEntityThinkFunc(Entity, Delta)) /// Entity not yet prepared to get destroyed.
         set_task(0.000001, "Task_RemoveWeaponBox_Delayed", Entity + ThrowingKnives_RemoveTaskOffset); /// Re-try.
     else
-        killWeaponBox(Entity); /// Erase from map + stop re-trying.
+        DoD_WpnBoxKill(Entity); /// Erase from map + stop re-trying.
     return PLUGIN_HANDLED;
 }
 
@@ -526,7 +514,7 @@ bool: safeEraseWeaponBox(Entity)
     static Delta, taskIndex;
     if (g_wpnBoxKill == DoD_GetEntityThinkFunc(Entity, Delta))
     { /// Now, if possible.
-        killWeaponBox(Entity);
+        DoD_WpnBoxKill(Entity);
         return true;
     } /// Later.
     taskIndex = Entity + ThrowingKnives_RemoveTaskOffset;
@@ -590,10 +578,4 @@ sendHealthMsgNotifyingDoDXStats(Player)
     emessage_begin(MSG_ONE_UNRELIABLE, g_msgHealth, { 0, 0, 0 }, Player);
     ewrite_byte(get_pdata_int(Player, INT_CBasePlayer_m_iClientHealth));
     emessage_end();
-}
-
-killWeaponBox(Entity)
-{
-    DoD_WpnBoxKill(Entity);
-    DoD_UnblockFromPlayerCollision(Entity);
 }

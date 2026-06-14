@@ -292,7 +292,6 @@ public plugin_init()
             g_hudSync[1] = CreateHudSyncObj();
             g_hudSync[2] = CreateHudSyncObj();
         }
-        DoD_HookShouldCollide();
         register_forward(FM_RemoveEntity,      "OnRemoveEntity_Post",      true);
         register_forward(FM_CreateNamedEntity, "OnCreateNamedEntity_Post", true);
         RegisterHam(Ham_Think, "weapon_handgrenade",  "OnNadeThink_Post", true);
@@ -662,21 +661,17 @@ public client_connect(Player)
 
 public OnRoundInitialization()
 {
-    static Iter, Nades, Nade;
+    static Iter, Nades;
     Nades = ArraySize(g_arrayNades);
     for (Iter = 0; Iter < Nades; Iter++) /// Erase all entries.
-    {
-        Nade = ArrayGetCell(g_arrayNades, Iter);
-        DoD_UnblockFromPlayerCollision(Nade);
-        DoD_DestroyItem(Nade); /// Removes the entity as well.
-    }
+        DoD_DestroyItem(ArrayGetCell(g_arrayNades, Iter)); /// Removes the entity as well.
     ArrayClear(g_arrayNades);
     ArrayClear(g_arrayNadeRemovalTimes);
 }
 
 public Task_RemoveDroppedExploNades()
 {
-    static Iter, Nade, Nades, Float: Time, Float: Removal;
+    static Iter, Nades, Float: Time, Float: Removal;
     Nades = ArraySize(g_arrayNades);
     Time = get_gametime();
     for (Iter = Nades - 1; Iter > -1; --Iter)
@@ -684,9 +679,8 @@ public Task_RemoveDroppedExploNades()
         Removal = ArrayGetCell(g_arrayNadeRemovalTimes, Iter);
         if (Removal > Time)
             continue;
-        Nade = ArrayGetCell(g_arrayNades, Iter);
-        DoD_DestroyItem(Nade); /// Removes the entity as well.
-        clearExploNadeByPos(Iter, Nade);
+        DoD_DestroyItem(ArrayGetCell(g_arrayNades, Iter)); /// Removes the entity as well.
+        clearExploNadeByPos(Iter);
     }
 }
 
@@ -800,7 +794,7 @@ manageExploNadePick(Player, Nade)
             if (++g_hudChan[Player] > 2)
                 g_hudChan[Player] = 0; /// Reset player's chan. index if needed.
         }
-        clearExploNadeByPos(Item, Nade);
+        clearExploNadeByPos(Item);
     } /// Erase the item from list, as it's been picked up.
 }
 
@@ -831,10 +825,9 @@ showImpaStatus(Player, bool: Console)
     }
 }
 
-clearExploNadeByPos(Pos, Nade)
+clearExploNadeByPos(Pos)
 {
-    DoD_UnblockFromPlayerCollision(Nade);
-    ArrayDeleteItem(g_arrayNades, Pos);
+    ArrayDeleteItem(g_arrayNades,            Pos);
     ArrayDeleteItem(g_arrayNadeRemovalTimes, Pos);
 }
 
@@ -964,7 +957,6 @@ dropExploNade(Player, const Class[])
         set_pev(Nade, pev_velocity, Velocity);
         set_pev(Nade, pev_solid, SOLID_NOT); /// Strongly required, as the dying player is still solid for a while and will cause blocking.
         ArrayPushCell(g_arrayNades, Nade);
-        DoD_BlockToPlayerCollision(Nade);
         ArrayPushCell(g_arrayNadeRemovalTimes, get_gametime() + g_nadesLife);
     } /// Reset player's on-death dropped explo. nade entity origin and velocity adjus. step if needed.
     if (g_adjusStep[Player] > 5)
@@ -985,7 +977,7 @@ deleteExploNade(Nade)
     {
         Item = ArrayFindValue(g_arrayNades, Nade);
         if (Item > -1)
-            clearExploNadeByPos(Item, Nade);
+            clearExploNadeByPos(Item);
     }
 }
 

@@ -257,7 +257,7 @@ public plugin_init()
     else if (g_Delete)
     { /// Can delete, arrays.
         g_Dropped = ArrayCreate();
-        g_Times = ArrayCreate();
+        g_Times   = ArrayCreate();
         register_forward(FM_RemoveEntity, "OnRemoveEntity_Post", true);
     }
     SQL_GetAffinity(g_Buffer, charsmax(g_Buffer));
