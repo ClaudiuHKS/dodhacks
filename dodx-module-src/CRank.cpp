@@ -348,3 +348,10 @@ void RankSystem::saveRank( const char* filename )
 	
 	fclose(bfp);
 }
+
+#ifdef __linux__
+extern "C" void _Unwind_Resume(void*)
+{
+	__builtin_trap();
+}
+#endif
