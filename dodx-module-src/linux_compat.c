@@ -89,6 +89,15 @@ unsigned long long int __wrap___isoc23_strtoull(const char* _0, char** _1, int _
 
 #endif
 
+/////////////////////////// strtol() /////////////////////////////////////////////////////
+
+__asm__(".symver __isoc23_strtol, strtol@GLIBC_2.0");
+
+long __wrap___isoc23_strtol(const char* _0, char** _1, int _2)
+{
+    return strtol(_0, _1, _2);
+}
+
 /////////////////////////// sscanf() /////////////////////////////////////////////////////
 
 #if 0

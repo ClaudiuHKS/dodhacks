@@ -133,7 +133,7 @@ OPT += -lstdc++
 OPT += -m32
 OPT += -mfpmath=sse
 OPT += -msse
-OPT += -o3
+OPT += -O3
 OPT += -pipe
 OPT += -pthread
 #

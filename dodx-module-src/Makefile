@@ -138,7 +138,7 @@ OPT += -lpthread
 OPT += -m32
 OPT += -mfpmath=sse
 OPT += -msse
-OPT += -o3
+OPT += -O3
 OPT += -pipe
 OPT += -pthread
 #
@@ -176,6 +176,7 @@ OPT += -w
 # OPT += -Wl,--wrap=dlsym
 # OPT += -Wl,--wrap=dladdr
 # OPT += -Wl,--wrap=__isoc23_strtoull
+OPT += -Wl,--wrap=__isoc23_strtol
 OPT += -Wl,--wrap=__isoc23_sscanf
 # OPT += -Wl,--wrap=fstat
 
