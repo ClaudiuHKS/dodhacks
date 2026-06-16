@@ -55,16 +55,24 @@ new g_maxDrop; /// Max. explo. nades a dead player will drop.
 new g_Flags; /// Admin flag(s) required for on-impact explo. nade proj. deton. client cmd.
 new g_syncImpa; /// HUD msg. sync handle used for on-impact explo. nade proj. deton. msg. (**)
 new g_cmdImpaLen; /// On-impact explo. nade proj. deton. client cmd. length.
+new g_alliesGrenades; /// Allies custom-given grenade(s) count.
+new g_axisGrenades; /// Axis custom-given grenade(s) count.
+new g_britishGrenades; /// British custom-given grenade(s) count.
+new g_flagNades; /// Admin access required for receiving explosive grenade(s) during spawn.
 new g_hudSync[3]; /// HUD msg. sync handles required for on-death dropped explo. nades msg. (***#)
+new g_alliesGrenade[32]; /// Allies custom-given grenade entity name.
+new g_axisGrenade[32]; /// Axis custom-given grenade entity name.
+new g_britishGrenade[32]; /// British custom-given grenade entity name.
 new g_cmdImpa[32]; /// Client cmd. for on-impact explo. nade proj. deton.
 new g_adjusStep[33]; /// Player's on-death dropped explo. nade entity origin and velocity adjus. step. (***)
-new g_Team[33]; /// Player's team index. (***)
+new g_Team[33]; /// Player's team index.
 new g_dmgType[33]; /// Player's taken dmg. type. (***)
 new g_hudChan[33]; /// Player's HUD msg. channel index used for on-death dropped explo. nade msg. (***#)
 new g_playerNade[33]; /// Player's unowned nade entity index.
 new g_Steam[33][32]; /// Player Steam accounts. (**)
 new g_Buffer[256]; /// A large buffer.
 new bool: g_isInServer[33]; /// Whether or not the player is in server.
+new bool: g_inSpawn[33]; /// Whether we are inside DoD_OnPlayerSpawn() function at the moment.
 new bool: g_isAuthenticated[33]; /// Player is authorized. (**)
 new bool: g_isFakePlayer[33]; /// Whether or not the player is a BOT (a fake player).
 new bool: g_isDead[33]; /// Whether or not the player has died and can't pick up explo. nades from floor anymore. (***)
@@ -84,7 +92,9 @@ new bool: g_hudMsgImpa; /// Whether or not to show a HUD msg. when an explo. nad
 new bool: g_hudStyleImpa; /// Whether or not to use a visual effect on the HUD msg. managed by 'g_hudMsgImpa'.
 new bool: g_hudStyleImpaCmd; /// Whether or not to use a visual effect on the HUD msg. related to on-impact explo. nade proj. deton. client cmd.
 new bool: g_hideChatCmd; /// Hide the on-impact explo. nade proj. deton. client cmd. if it's been activated from chat.
+new bool: g_areAlliesBritish; /// Whether Allies are British this map.
 new bool: g_isStorageLocal; /// Local storage in use.
+new bool: g_gameForceMaxOneNadePerSpawn; /// Whether or not to force max. 1 explo. grenade per player spawn (to be given).
 new bool: g_forceKnife; /// Whether to force players use their knife if they're already using a knife and picking up explo. nades.
 new bool: g_badIsUserWaitingThrowingKnife = false; /// "DoD_IsUserWaitingThrowingKnife" function has not been found on the server (if true).
 new Array: g_arrayNades = Invalid_Array; /// On-death dropped explo. nade ents. (***)
@@ -120,7 +130,7 @@ public plugin_init()
     }
 
     new Key[32], Val[32], Drv[32], Host[32], User[32], Pass[32], Db[32], bool: eraseOnNewRound,
-        bool: allowSelfGlow, bool: allowTeamGlow, bool: allowDroppedGlow, Err[4], errCode;
+        bool: allowSelfGlow, bool: allowTeamGlow, bool: allowDroppedGlow, Tmp[32], errCode;
     while (fgets(Config, g_Buffer, charsmax(g_Buffer)) > 0)
     {
         trim(g_Buffer);
@@ -187,8 +197,12 @@ public plugin_init()
             allowSelfGlow = bool: str_to_num(Val);
         else if (equali(Key, "@allow_team_glow"))
             allowTeamGlow = bool: str_to_num(Val);
+        else if (equali(Key, "@nades_access"))
+            g_flagNades = read_flags(Val);
         else if (equali(Key, "@allow_dropped_glow"))
             allowDroppedGlow = bool: str_to_num(Val);
+        else if (equali(Key, "@game_max_1_nade_at_spawn"))
+            g_gameForceMaxOneNadePerSpawn = bool: str_to_num(Val);
         else if (equali(Key, "@db_driver"))
         {
             copy(Drv, charsmax(Drv), Val);
@@ -202,6 +216,33 @@ public plugin_init()
             copy(Host, charsmax(Host), Val);
         else if (equali(Key, "@db_name"))
             copy(Db, charsmax(Db), Val);
+        else if (equali(Key, "@grenade_allies"))
+        {
+            if (parse(g_Buffer, Key, charsmax(Key), Val, charsmax(Val),
+                Tmp, charsmax(Tmp)) > 2)
+            {
+                copy(g_alliesGrenade, charsmax(g_alliesGrenade), Tmp);
+                g_alliesGrenades = str_to_num(Val);
+            }
+        }
+        else if (equali(Key, "@grenade_axis"))
+        {
+            if (parse(g_Buffer, Key, charsmax(Key), Val, charsmax(Val),
+                Tmp, charsmax(Tmp)) > 2)
+            {
+                copy(g_axisGrenade, charsmax(g_axisGrenade), Tmp);
+                g_axisGrenades = str_to_num(Val);
+            }
+        }
+        else if (equali(Key, "@grenade_british"))
+        {
+            if (parse(g_Buffer, Key, charsmax(Key), Val, charsmax(Val),
+                Tmp, charsmax(Tmp)) > 2)
+            {
+                copy(g_britishGrenade, charsmax(g_britishGrenade), Tmp);
+                g_britishGrenades = str_to_num(Val);
+            }
+        }
     }
     fclose(Config);
 
@@ -250,7 +291,7 @@ public plugin_init()
             }
         g_threadedSqlConnectionTuple = SQL_MakeDbTuple(Host, User, Pass, Db);
         g_tmpSqlConnectionTuple = SQL_MakeDbTuple(Host, User, Pass, Db, 3);
-        g_tmpSqlConnection = SQL_Connect(g_tmpSqlConnectionTuple, errCode, Err, charsmax(Err)); /// Connect just to see whether server is up or down.
+        g_tmpSqlConnection = SQL_Connect(g_tmpSqlConnectionTuple, errCode, Tmp, charsmax(Tmp)); /// Connect just to see whether server is up or down.
         if (Empty_Handle != g_tmpSqlConnection)
         {
             g_initiallyConnected = true;
@@ -301,6 +342,7 @@ public plugin_init()
         set_task(1.0, "Task_RemoveDroppedExploNades", .flags = "b");
     }
     g_maxPlayers = get_maxplayers();
+    g_areAlliesBritish = DoD_AreAlliesBritish();
     if (allowSelfGlow)
         DoD_AddSelfExploNadeProjGlow(      kRenderNormal, kRenderFxGlowShell,
             {  20, 180, 200 } /** L. blue. */, 5, SOLID_NOT, true);
@@ -623,14 +665,51 @@ public OnAxisNadeTouch_Pre(Nade, Other)
 public DoD_OnPlayerSpawn(DoD_Address: CDoDTeamPlay, &Player)
     if (g_isInServer[Player])
     {
+        g_inSpawn[Player] = true;
         g_isDead[Player] = false;
         g_playerNade[Player] = 0;
+        g_Team[Player] = get_user_team(Player);
         if (g_maxDrop)
-        {
             g_spawnTime[Player] = get_gametime();
-            g_Team[Player] = get_user_team(Player);
+    }
+
+public DoD_OnPlayerSpawn_Post(DoD_Address: CDoDTeamPlay, Player)
+{
+    static Iter, Item;
+    if (g_isInServer[Player])
+    {
+        g_inSpawn[Player] = false;
+        if (g_flagNades == (get_user_flags(Player) & g_flagNades) &&
+            calcExploNades(Player, Iter, Item) < 1)
+        {
+            switch (g_Team[Player])
+            {
+                case ALLIES:
+                    if (g_areAlliesBritish)
+                        for (Iter = 0; Iter < g_britishGrenades; Iter++)
+                            DoD_GiveNamedItem(Player, g_britishGrenade, Item);
+                    else
+                        for (Iter = 0; Iter < g_alliesGrenades; Iter++)
+                            DoD_GiveNamedItem(Player, g_alliesGrenade, Item);
+                default:
+                    for (Iter = 0; Iter < g_axisGrenades; Iter++)
+                        DoD_GiveNamedItem(Player, g_axisGrenade, Item);
+            }
         }
     }
+}
+
+public DoD_OnGiveNamedItem(Player, Item[], ItemSize /** = 64 */, &OverrideRes)
+{ /// Item may be altered during execution.
+    if (!g_inSpawn[Player])
+        return PLUGIN_CONTINUE; /// Skip.
+    if (g_gameForceMaxOneNadePerSpawn &&
+        (get_pdata_int(Player, INT_CBasePlayer_m_rgAmmo_ANade) ||
+        get_pdata_int(Player, INT_CBasePlayer_m_rgAmmo_GNade)) &&
+        DoD_IsWeaponGrenade(Item))
+        return PLUGIN_HANDLED;
+    return PLUGIN_CONTINUE;
+}
 
 public client_putinserver(Player)
 {
@@ -838,6 +917,7 @@ zeroPlayerGlobals(Player)
     g_isInServer[Player] = false;
     g_isFakePlayer[Player] = false;
     g_isAuthenticated[Player] = false;
+    g_inSpawn[Player] = false;
     g_dmgTime[Player] = 0.0;
     g_pickTime[Player] = 0.0;
     g_spawnTime[Player] = 0.0;

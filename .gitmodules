@@ -13,3 +13,12 @@
 [submodule "dodhacks-module-src/Detours"]
 	path = dodhacks-module-src/Detours
 	url = https://github.com/microsoft/Detours.git
+[submodule "dodx-module-src/amxmodx"]
+	path = dodx-module-src/amxmodx
+	url = https://github.com/alliedmodders/amxmodx
+[submodule "dodx-module-src/hlsdk"]
+	path = dodx-module-src/hlsdk
+	url = https://github.com/alliedmodders/hlsdk
+[submodule "dodx-module-src/metamod-hl1"]
+	path = dodx-module-src/metamod-hl1
+	url = https://github.com/alliedmodders/metamod-hl1

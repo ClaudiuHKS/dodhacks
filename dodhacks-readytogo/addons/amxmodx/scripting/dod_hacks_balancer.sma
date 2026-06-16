@@ -9,6 +9,7 @@
 #define ofs_playerRecentlyChangedTeam 356 /// 'int  ::CBasePlayer::m_ilastteam'      variable.
 #define ofs_playerNextClass           367 /// 'int  ::CBasePlayer::m_iNextClass'     variable.
 
+new bool: g_doBeep;
 new bool: g_exclUnclassed;
 new bool: g_showScreenFade;
 new bool: g_areAlliesBritish;
@@ -50,6 +51,8 @@ public plugin_init()
             g_showScreenFade = bool: str_to_num(Val);
         else if (equali(Key, "@excl_unclassed"))
             g_exclUnclassed = bool: str_to_num(Val);
+        else if (equali(Key, "@audio_beep"))
+            g_doBeep = bool: str_to_num(Val);
         else if (equali(Key, "@excl_flags"))
             g_Flag = read_flags(Val);
     }
@@ -120,6 +123,8 @@ public Task_BalanceTeams()
                     DoD_ChooseRandomClass(Player, Class, true, true, true, false, DoD_RCA_Remove);
                 if (g_showScreenFade)
                     doScreenFade(Player, AXIS, 0.15, 0.20);
+                if (g_doBeep)
+                    client_cmd(Player, "spk fvox/beep");
             }
         }
     }
@@ -154,6 +159,8 @@ public Task_BalanceTeams()
                     DoD_ChooseRandomClass(Player, Class, true, true, true, false, DoD_RCA_Remove);
                 if (g_showScreenFade)
                     doScreenFade(Player, ALLIES, 0.15, 0.20);
+                if (g_doBeep)
+                    client_cmd(Player, "spk fvox/beep");
             }
         }
     }

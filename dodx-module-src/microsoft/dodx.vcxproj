@@ -27,8 +27,8 @@
     </ProjectConfiguration>
   </ItemGroup>
   <PropertyGroup Label="Globals">
-    <ProjectGuid>{2742C607-9FAB-47B3-8A13-E999BC6FDB54}</ProjectGuid>
-    <RootNamespace>dodhacks</RootNamespace>
+    <ProjectGuid>{17D2C907-9FFB-47B3-8613-E399BC6F1B54}</ProjectGuid>
+    <RootNamespace>dodx</RootNamespace>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
@@ -160,7 +160,7 @@
       <MkTypLibCompatible>true</MkTypLibCompatible>
       <SuppressStartupBanner>true</SuppressStartupBanner>
       <TargetEnvironment>Win32</TargetEnvironment>
-      <TypeLibraryName>.\Release/dodhacks.tlb</TypeLibraryName>
+      <TypeLibraryName>.\Release/dodx.tlb</TypeLibraryName>
       <HeaderFileName>
       </HeaderFileName>
     </Midl>
@@ -168,7 +168,7 @@
       <Optimization>MaxSpeed</Optimization>
       <InlineFunctionExpansion>OnlyExplicitInline</InlineFunctionExpansion>
       <AdditionalIncludeDirectories>.;..;.\;..\;$(SUBHOOK);..\subhook;..\hlsdk\public;..\hlsdk\pm_shared;..\hlsdk\common;..\hlsdk\dlls;..\hlsdk\engine;..\metamod-hl1\metamod;..\amxmodx\public;..\amxmodx\public\sdk;..\Detours\src;$(DETOURS)\src;$(AMXX)\public;$(AMXX)\public\sdk;$(METAMOD)\metamod;$(HLSDK)\common;$(HLSDK)\engine;$(HLSDK)\dlls;$(HLSDK)\pm_shared;$(HLSDK)\public;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>FASTCALL_PARAM_ALONE=,void*;FASTCALL_PARAM=void*,;SUBHOOK_STATIC;HAVE_STDINT_H;DODHACKS_EXPORTS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>FASTCALL_PARAM_ALONE=,void*;FASTCALL_PARAM=void*,;SUBHOOK_STATIC;HAVE_STDINT_H;DODX_EXPORTS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <StringPooling>true</StringPooling>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
       <StructMemberAlignment>Default</StructMemberAlignment>
@@ -176,7 +176,7 @@
       <RuntimeTypeInfo>false</RuntimeTypeInfo>
       <PrecompiledHeader>
       </PrecompiledHeader>
-      <PrecompiledHeaderOutputFile>.\Release/dodhacks.pch</PrecompiledHeaderOutputFile>
+      <PrecompiledHeaderOutputFile>.\Release/dodx.pch</PrecompiledHeaderOutputFile>
       <AssemblerListingLocation>.\Release/</AssemblerListingLocation>
       <ObjectFileName>.\Release/</ObjectFileName>
       <ProgramDataBaseFileName>.\Release/</ProgramDataBaseFileName>
@@ -213,8 +213,8 @@
     </ResourceCompile>
     <Link>
       <SuppressStartupBanner>true</SuppressStartupBanner>
-      <ProgramDatabaseFile>.\Release/dodhacks_amxx.pdb</ProgramDatabaseFile>
-      <ImportLibrary>.\Release/dodhacks_amxx.lib</ImportLibrary>
+      <ProgramDatabaseFile>.\Release/dodx_amxx.pdb</ProgramDatabaseFile>
+      <ImportLibrary>.\Release/dodx_amxx.lib</ImportLibrary>
       <TargetMachine>MachineX86</TargetMachine>
       <SubSystem>Windows</SubSystem>
       <SpecifySectionAttributes>
@@ -237,7 +237,7 @@
       <MkTypLibCompatible>true</MkTypLibCompatible>
       <SuppressStartupBanner>true</SuppressStartupBanner>
       <TargetEnvironment>Win32</TargetEnvironment>
-      <TypeLibraryName>.\Release/dodhacks.tlb</TypeLibraryName>
+      <TypeLibraryName>.\Release/dodx.tlb</TypeLibraryName>
       <HeaderFileName>
       </HeaderFileName>
     </Midl>
@@ -245,7 +245,7 @@
       <Optimization>MaxSpeed</Optimization>
       <InlineFunctionExpansion>OnlyExplicitInline</InlineFunctionExpansion>
       <AdditionalIncludeDirectories>.;..;.\;..\;$(SUBHOOK);..\subhook;..\hlsdk\public;..\hlsdk\pm_shared;..\hlsdk\common;..\hlsdk\dlls;..\hlsdk\engine;..\metamod-hl1\metamod;..\amxmodx\public;..\amxmodx\public\sdk;..\Detours\src;$(DETOURS)\src;$(AMXX)\public;$(AMXX)\public\sdk;$(METAMOD)\metamod;$(HLSDK)\common;$(HLSDK)\engine;$(HLSDK)\dlls;$(HLSDK)\pm_shared;$(HLSDK)\public;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>FASTCALL_PARAM_ALONE=,void*;FASTCALL_PARAM=void*,;SUBHOOK_STATIC;HAVE_STDINT_H;DODHACKS_EXPORTS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>FASTCALL_PARAM_ALONE=,void*;FASTCALL_PARAM=void*,;SUBHOOK_STATIC;HAVE_STDINT_H;DODX_EXPORTS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <StringPooling>true</StringPooling>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
       <StructMemberAlignment>Default</StructMemberAlignment>
@@ -253,7 +253,7 @@
       <RuntimeTypeInfo>false</RuntimeTypeInfo>
       <PrecompiledHeader>
       </PrecompiledHeader>
-      <PrecompiledHeaderOutputFile>.\Release/dodhacks.pch</PrecompiledHeaderOutputFile>
+      <PrecompiledHeaderOutputFile>.\Release/dodx.pch</PrecompiledHeaderOutputFile>
       <AssemblerListingLocation>.\Release/</AssemblerListingLocation>
       <ObjectFileName>.\Release/</ObjectFileName>
       <ProgramDataBaseFileName>.\Release/</ProgramDataBaseFileName>
@@ -289,8 +289,8 @@
     </ResourceCompile>
     <Link>
       <SuppressStartupBanner>true</SuppressStartupBanner>
-      <ProgramDatabaseFile>.\Release/dodhacks_amxx.pdb</ProgramDatabaseFile>
-      <ImportLibrary>.\Release/dodhacks_amxx.lib</ImportLibrary>
+      <ProgramDatabaseFile>.\Release/dodx_amxx.pdb</ProgramDatabaseFile>
+      <ImportLibrary>.\Release/dodx_amxx.lib</ImportLibrary>
       <TargetMachine>MachineX86</TargetMachine>
       <SubSystem>Windows</SubSystem>
       <SpecifySectionAttributes>
@@ -310,7 +310,7 @@
       <MkTypLibCompatible>true</MkTypLibCompatible>
       <SuppressStartupBanner>true</SuppressStartupBanner>
       <TargetEnvironment>Win32</TargetEnvironment>
-      <TypeLibraryName>.\Release/dodhacks.tlb</TypeLibraryName>
+      <TypeLibraryName>.\Release/dodx.tlb</TypeLibraryName>
       <HeaderFileName>
       </HeaderFileName>
     </Midl>
@@ -318,7 +318,7 @@
       <Optimization>MaxSpeed</Optimization>
       <InlineFunctionExpansion>OnlyExplicitInline</InlineFunctionExpansion>
       <AdditionalIncludeDirectories>.;..;.\;..\;$(SUBHOOK);..\subhook;..\hlsdk\public;..\hlsdk\pm_shared;..\hlsdk\common;..\hlsdk\dlls;..\hlsdk\engine;..\metamod-hl1\metamod;..\amxmodx\public;..\amxmodx\public\sdk;..\Detours\src;$(DETOURS)\src;$(AMXX)\public;$(AMXX)\public\sdk;$(METAMOD)\metamod;$(HLSDK)\common;$(HLSDK)\engine;$(HLSDK)\dlls;$(HLSDK)\pm_shared;$(HLSDK)\public;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>FASTCALL_PARAM_ALONE=,void*;FASTCALL_PARAM=void*,;SUBHOOK_STATIC;HAVE_STDINT_H;DODHACKS_EXPORTS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>FASTCALL_PARAM_ALONE=,void*;FASTCALL_PARAM=void*,;SUBHOOK_STATIC;HAVE_STDINT_H;DODX_EXPORTS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <StringPooling>true</StringPooling>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <StructMemberAlignment>Default</StructMemberAlignment>
@@ -326,7 +326,7 @@
       <RuntimeTypeInfo>false</RuntimeTypeInfo>
       <PrecompiledHeader>
       </PrecompiledHeader>
-      <PrecompiledHeaderOutputFile>.\Release/dodhacks.pch</PrecompiledHeaderOutputFile>
+      <PrecompiledHeaderOutputFile>.\Release/dodx.pch</PrecompiledHeaderOutputFile>
       <AssemblerListingLocation>.\Release/</AssemblerListingLocation>
       <ObjectFileName>.\Release/</ObjectFileName>
       <ProgramDataBaseFileName>.\Release/</ProgramDataBaseFileName>
@@ -363,8 +363,8 @@
     </ResourceCompile>
     <Link>
       <SuppressStartupBanner>true</SuppressStartupBanner>
-      <ProgramDatabaseFile>.\Release/dodhacks_amxx.pdb</ProgramDatabaseFile>
-      <ImportLibrary>.\Release/dodhacks_amxx.lib</ImportLibrary>
+      <ProgramDatabaseFile>.\Release/dodx_amxx.pdb</ProgramDatabaseFile>
+      <ImportLibrary>.\Release/dodx_amxx.lib</ImportLibrary>
       <TargetMachine>MachineX86</TargetMachine>
       <SubSystem>Windows</SubSystem>
       <SpecifySectionAttributes>
@@ -387,7 +387,7 @@
       <MkTypLibCompatible>true</MkTypLibCompatible>
       <SuppressStartupBanner>true</SuppressStartupBanner>
       <TargetEnvironment>Win32</TargetEnvironment>
-      <TypeLibraryName>.\Release/dodhacks.tlb</TypeLibraryName>
+      <TypeLibraryName>.\Release/dodx.tlb</TypeLibraryName>
       <HeaderFileName>
       </HeaderFileName>
     </Midl>
@@ -395,7 +395,7 @@
       <Optimization>MaxSpeed</Optimization>
       <InlineFunctionExpansion>OnlyExplicitInline</InlineFunctionExpansion>
       <AdditionalIncludeDirectories>.;..;.\;..\;$(SUBHOOK);..\subhook;..\hlsdk\public;..\hlsdk\pm_shared;..\hlsdk\common;..\hlsdk\dlls;..\hlsdk\engine;..\metamod-hl1\metamod;..\amxmodx\public;..\amxmodx\public\sdk;..\Detours\src;$(DETOURS)\src;$(AMXX)\public;$(AMXX)\public\sdk;$(METAMOD)\metamod;$(HLSDK)\common;$(HLSDK)\engine;$(HLSDK)\dlls;$(HLSDK)\pm_shared;$(HLSDK)\public;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>FASTCALL_PARAM_ALONE=,void*;FASTCALL_PARAM=void*,;SUBHOOK_STATIC;HAVE_STDINT_H;DODHACKS_EXPORTS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>FASTCALL_PARAM_ALONE=,void*;FASTCALL_PARAM=void*,;SUBHOOK_STATIC;HAVE_STDINT_H;DODX_EXPORTS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <StringPooling>true</StringPooling>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <StructMemberAlignment>Default</StructMemberAlignment>
@@ -403,7 +403,7 @@
       <RuntimeTypeInfo>false</RuntimeTypeInfo>
       <PrecompiledHeader>
       </PrecompiledHeader>
-      <PrecompiledHeaderOutputFile>.\Release/dodhacks.pch</PrecompiledHeaderOutputFile>
+      <PrecompiledHeaderOutputFile>.\Release/dodx.pch</PrecompiledHeaderOutputFile>
       <AssemblerListingLocation>.\Release/</AssemblerListingLocation>
       <ObjectFileName>.\Release/</ObjectFileName>
       <ProgramDataBaseFileName>.\Release/</ProgramDataBaseFileName>
@@ -439,8 +439,8 @@
     </ResourceCompile>
     <Link>
       <SuppressStartupBanner>true</SuppressStartupBanner>
-      <ProgramDatabaseFile>.\Release/dodhacks_amxx.pdb</ProgramDatabaseFile>
-      <ImportLibrary>.\Release/dodhacks_amxx.lib</ImportLibrary>
+      <ProgramDatabaseFile>.\Release/dodx_amxx.pdb</ProgramDatabaseFile>
+      <ImportLibrary>.\Release/dodx_amxx.lib</ImportLibrary>
       <TargetMachine>MachineX86</TargetMachine>
       <SubSystem>Windows</SubSystem>
       <SpecifySectionAttributes>
@@ -460,7 +460,7 @@
       <MkTypLibCompatible>true</MkTypLibCompatible>
       <SuppressStartupBanner>true</SuppressStartupBanner>
       <TargetEnvironment>Win32</TargetEnvironment>
-      <TypeLibraryName>.\Release/dodhacks.tlb</TypeLibraryName>
+      <TypeLibraryName>.\Release/dodx.tlb</TypeLibraryName>
       <HeaderFileName>
       </HeaderFileName>
     </Midl>
@@ -468,7 +468,7 @@
       <Optimization>MaxSpeed</Optimization>
       <InlineFunctionExpansion>OnlyExplicitInline</InlineFunctionExpansion>
       <AdditionalIncludeDirectories>.;..;.\;..\;$(SUBHOOK);..\subhook;..\hlsdk\public;..\hlsdk\pm_shared;..\hlsdk\common;..\hlsdk\dlls;..\hlsdk\engine;..\metamod-hl1\metamod;..\amxmodx\public;..\amxmodx\public\sdk;..\Detours\src;$(DETOURS)\src;$(AMXX)\public;$(AMXX)\public\sdk;$(METAMOD)\metamod;$(HLSDK)\common;$(HLSDK)\engine;$(HLSDK)\dlls;$(HLSDK)\pm_shared;$(HLSDK)\public;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>FASTCALL_PARAM_ALONE=,void*;FASTCALL_PARAM=void*,;SUBHOOK_STATIC;HAVE_STDINT_H;DODHACKS_EXPORTS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>FASTCALL_PARAM_ALONE=,void*;FASTCALL_PARAM=void*,;SUBHOOK_STATIC;HAVE_STDINT_H;DODX_EXPORTS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <StringPooling>true</StringPooling>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
       <StructMemberAlignment>Default</StructMemberAlignment>
@@ -476,7 +476,7 @@
       <RuntimeTypeInfo>false</RuntimeTypeInfo>
       <PrecompiledHeader>
       </PrecompiledHeader>
-      <PrecompiledHeaderOutputFile>.\Release/dodhacks.pch</PrecompiledHeaderOutputFile>
+      <PrecompiledHeaderOutputFile>.\Release/dodx.pch</PrecompiledHeaderOutputFile>
       <AssemblerListingLocation>.\Release/</AssemblerListingLocation>
       <ObjectFileName>.\Release/</ObjectFileName>
       <ProgramDataBaseFileName>.\Release/</ProgramDataBaseFileName>
@@ -513,8 +513,8 @@
     </ResourceCompile>
     <Link>
       <SuppressStartupBanner>true</SuppressStartupBanner>
-      <ProgramDatabaseFile>.\Release/dodhacks_amxx.pdb</ProgramDatabaseFile>
-      <ImportLibrary>.\Release/dodhacks_amxx.lib</ImportLibrary>
+      <ProgramDatabaseFile>.\Release/dodx_amxx.pdb</ProgramDatabaseFile>
+      <ImportLibrary>.\Release/dodx_amxx.lib</ImportLibrary>
       <TargetMachine>MachineX86</TargetMachine>
       <SubSystem>Windows</SubSystem>
       <SpecifySectionAttributes>
@@ -536,20 +536,20 @@
       <MkTypLibCompatible>true</MkTypLibCompatible>
       <SuppressStartupBanner>true</SuppressStartupBanner>
       <TargetEnvironment>Win32</TargetEnvironment>
-      <TypeLibraryName>.\Debug/dodhacks.tlb</TypeLibraryName>
+      <TypeLibraryName>.\Debug/dodx.tlb</TypeLibraryName>
       <HeaderFileName>
       </HeaderFileName>
     </Midl>
     <ClCompile>
       <Optimization>Disabled</Optimization>
       <AdditionalIncludeDirectories>.;..;.\;..\;$(SUBHOOK);..\subhook;..\hlsdk\public;..\hlsdk\pm_shared;..\hlsdk\common;..\hlsdk\dlls;..\hlsdk\engine;..\metamod-hl1\metamod;..\amxmodx\public;..\amxmodx\public\sdk;..\Detours\src;$(DETOURS)\src;$(AMXX)\public;$(AMXX)\public\sdk;$(METAMOD)\metamod;$(HLSDK)\common;$(HLSDK)\engine;$(HLSDK)\dlls;$(HLSDK)\pm_shared;$(HLSDK)\public;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>FASTCALL_PARAM_ALONE=,void*;FASTCALL_PARAM=void*,;SUBHOOK_STATIC;HAVE_STDINT_H;WIN32;_DEBUG;_WINDOWS;_USRDLL;DODHACKS_EXPORTS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>FASTCALL_PARAM_ALONE=,void*;FASTCALL_PARAM=void*,;SUBHOOK_STATIC;HAVE_STDINT_H;WIN32;_DEBUG;_WINDOWS;_USRDLL;DODX_EXPORTS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
       <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
       <RuntimeTypeInfo>true</RuntimeTypeInfo>
       <PrecompiledHeader>
       </PrecompiledHeader>
-      <PrecompiledHeaderOutputFile>.\Debug/dodhacks.pch</PrecompiledHeaderOutputFile>
+      <PrecompiledHeaderOutputFile>.\Debug/dodx.pch</PrecompiledHeaderOutputFile>
       <AssemblerListingLocation>.\Debug/</AssemblerListingLocation>
       <ObjectFileName>.\Debug/</ObjectFileName>
       <ProgramDataBaseFileName>.\Debug/</ProgramDataBaseFileName>
@@ -587,8 +587,8 @@
     <Link>
       <SuppressStartupBanner>true</SuppressStartupBanner>
       <GenerateDebugInformation>DebugFull</GenerateDebugInformation>
-      <ProgramDatabaseFile>.\Debug/dodhacks_amxx.pdb</ProgramDatabaseFile>
-      <ImportLibrary>.\Debug/dodhacks_amxx.lib</ImportLibrary>
+      <ProgramDatabaseFile>.\Debug/dodx_amxx.pdb</ProgramDatabaseFile>
+      <ImportLibrary>.\Debug/dodx_amxx.lib</ImportLibrary>
       <TargetMachine>MachineX86</TargetMachine>
       <SubSystem>Windows</SubSystem>
       <IgnoreSpecificDefaultLibraries>
@@ -609,6 +609,8 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="..\CMisc.cpp" />
+    <ClCompile Include="..\CRank.cpp" />
     <ClCompile Include="..\linux_compat.c">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release.AVX2|Win32'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release.WinXP.AVX2|Win32'">true</ExcludedFromBuild>
@@ -617,8 +619,11 @@
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
     </ClCompile>
-    <ClCompile Include="..\Memory.cpp" />
-    <ClCompile Include="..\dodhacks.cpp" />
+    <ClCompile Include="..\moduleconfig.cpp" />
+    <ClCompile Include="..\NBase.cpp" />
+    <ClCompile Include="..\NRank.cpp" />
+    <ClCompile Include="..\usermsg.cpp" />
+    <ClCompile Include="..\Utils.cpp" />
   </ItemGroup>
   <ItemGroup Condition="!exists('..\amxmodx\README.md')">
     <ClCompile Include="$(AMXX)\public\sdk\amxxmodule.cpp" />
@@ -626,25 +631,18 @@
   <ItemGroup Condition="exists('..\amxmodx\README.md')">
     <ClCompile Include="..\amxmodx\public\sdk\amxxmodule.cpp" />
   </ItemGroup>
-  <ItemGroup Condition="!exists('..\Detours\README.md')">
-    <ClCompile Include="$(DETOURS)\src\detours.cpp" />
-    <ClCompile Include="$(DETOURS)\src\disasm.cpp" />
-    <ClCompile Include="$(DETOURS)\src\modules.cpp" />
-  </ItemGroup>
   <ItemGroup Condition="exists('..\Detours\README.md')">
     <ClCompile Include="..\Detours\src\detours.cpp" />
     <ClCompile Include="..\Detours\src\disasm.cpp" />
     <ClCompile Include="..\Detours\src\modules.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\Memory.h" />
+    <ClInclude Include="..\CMisc.h" />
+    <ClInclude Include="..\CRank.h" />
+    <ClInclude Include="..\dodx.h" />
     <ClInclude Include="..\moduleconfig.h" />
-    <ClInclude Include="..\string_compat.h" />
-    <ClInclude Include="..\vector_compat.h" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="..\dodhacks.inc" />
-    <None Include="..\dod_hacks_signatures.ini" />
     <None Include="..\Makefile" />
   </ItemGroup>
   <ItemGroup Condition="!exists('..\amxmodx\README.md')">

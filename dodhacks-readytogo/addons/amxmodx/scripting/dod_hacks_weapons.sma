@@ -24,11 +24,6 @@
 #error AMX Mod X version too old to handle dod_hacks_weapons plugin! Consider upgrading! ('MPROP_PAGE_CALLBACK' is needed ...)
 #endif
 
-#define INT_CBasePlayer_m_rgAmmo_ANade     290 /// Allies/ British (weapon_handgrenade)     player ammo count (int CBasePlayer::m_rgAmmo[32]). Cell  #9.
-// #define INT_CBasePlayer_m_rgAmmo_AANade 291 /// Allies/ British (weapon_handgrenade_ex)  player ammo count (int CBasePlayer::m_rgAmmo[32]). Cell #10.
-#define INT_CBasePlayer_m_rgAmmo_GNade     292 /// Axis            (weapon_stickgrenade)    player ammo count (int CBasePlayer::m_rgAmmo[32]). Cell #11.
-// #define INT_CBasePlayer_m_rgAmmo_AGNade 293 /// Axis            (weapon_stickgrenade_ex) player ammo count (int CBasePlayer::m_rgAmmo[32]). Cell #12.
-
 #if !defined _dod_hacks_knives_included /// Works without this too.
 native bool: DoD_IsUserWaitingThrowingKnife(Player);
 #endif
@@ -55,7 +50,6 @@ new bool: g_HideMsg; /// Whether or not to hide the 'guns' chat command typed by
 new bool: g_British; /// Map is optimized for British against Axis.
 new bool: g_Delete; /// Delete the dropped gun when selecting a new one via the menu.
 new bool: g_HudStyle; /// Whether or not to use a visual effect on the HUD message(s).
-new bool: g_ForceMaxOneNadePerSpawn; /// Whether or not to force max. 1 explo. grenade per player spawn (to be given).
 new bool: g_badIsUserWaitingThrowingKnife = false; /// 'DoD_IsUserWaitingThrowingKnife' function has not been found on the server (if true).
 new Float: g_SpawnTime[33]; /// Time when the player spawned.
 new Float: g_EquipTime[33]; /// Time when the player got equipped.
@@ -72,15 +66,9 @@ new g_Steam[33][32]; /// Player Steam accounts.
 new g_Gun[33]; /// Player gun index selection.
 new g_Team[33]; /// Player team index.
 new g_Page[33]; /// Player menu page.
-new g_AlliesGrenade[32]; /// Allies custom-given grenade entity name.
-new g_AxisGrenade[32]; /// Axis custom-given grenade entity name.
-new g_BritishGrenade[32]; /// British custom-given grenade entity name.
 new g_ColtAmmo[32]; /// Ammo name used for weapon_colt.
 new g_LugerAmmo[32]; /// Ammo name used for weapon_luger.
 new g_WebleyAmmo[32]; /// Ammo name used for weapon_webley.
-new g_AlliesGrenades; /// Allies custom-given grenade(s) count.
-new g_AxisGrenades; /// Axis custom-given grenade(s) count.
-new g_BritishGrenades; /// British custom-given grenade(s) count.
 new g_ColtCount; /// Colt custom-given ammo count.
 new g_LugerCount; /// Luger custom-given ammo count.
 new g_WebleyCount; /// Webley custom-given ammo count.
@@ -89,7 +77,6 @@ new g_HudMsg; /// HUD message(s) sync handle.
 new g_Menu; /// Guns menu handle.
 new g_MaxPlayers; /// Maximum players server can handle.
 new g_Flag; /// Admin access required for using this feature ('guns' command).
-new g_FlagNades; /// Admin access required for receiving explosive grenade(s) during spawn.
 new g_FlagHandGuns; /// Admin access required for receiving hand gun ammo during spawn.
 new Handle: g_tmpSqlConnection = Empty_Handle;
 new bool: g_initiallyConnected = false;
@@ -161,21 +148,6 @@ public plugin_init()
                 copy(g_WebleyAmmo, charsmax(g_WebleyAmmo), Team);
                 g_WebleyCount = str_to_num(Name);
             }
-            else if (equali(Weapon, "@grenade_allies"))
-            {
-                copy(g_AlliesGrenade, charsmax(g_AlliesGrenade), Team);
-                g_AlliesGrenades = str_to_num(Name);
-            }
-            else if (equali(Weapon, "@grenade_axis"))
-            {
-                copy(g_AxisGrenade, charsmax(g_AxisGrenade), Team);
-                g_AxisGrenades = str_to_num(Name);
-            }
-            else if (equali(Weapon, "@grenade_british"))
-            {
-                copy(g_BritishGrenade, charsmax(g_BritishGrenade), Team);
-                g_BritishGrenades = str_to_num(Name);
-            }
             else if (equali(Weapon, "@max_seconds"))
                 g_TimeLimit = str_to_float(Name);
             else if (equali(Weapon, "@hide_chat_cmd"))
@@ -206,12 +178,8 @@ public plugin_init()
                 allowAll = bool: str_to_num(Name);
             else if (equali(Weapon, "@admin_access"))
                 g_Flag = read_flags(Name);
-            else if (equali(Weapon, "@nades_access"))
-                g_FlagNades = read_flags(Name);
             else if (equali(Weapon, "@handguns_access"))
                 g_FlagHandGuns = read_flags(Name);
-            else if (equali(Weapon, "@g_ForceMaxOneNadePerSpawn"))
-                g_ForceMaxOneNadePerSpawn = bool: str_to_num(Name);
             continue;
         }
         if (false == allowAll &&
@@ -374,7 +342,7 @@ public DoD_OnPlayerSpawn(DoD_Address: CDoDTeamPlay, &Player)
 
 public DoD_OnPlayerSpawn_Post(DoD_Address: CDoDTeamPlay, Player)
 {
-    static Weapon[32], Name[32], Ammo[32], Count, Item, Res, Iter, Flags, Access, Players, Float: Percent;
+    static Weapon[32], Name[32], Ammo[32], Count, Item, Res, Flags, Access, Players, Float: Percent;
     if (g_InServer[Player])
     {
         g_InSpawn[Player] = false;
@@ -488,31 +456,6 @@ public DoD_OnPlayerSpawn_Post(DoD_Address: CDoDTeamPlay, Player)
             }
         }
 Skip:
-        if (g_FlagNades != (Access & g_FlagNades))
-            goto SkipNades;
-        if (false == F_HasGrenade(Player, Weapon, charsmax(Weapon), Item))
-        {
-            switch (g_Team[Player])
-            {
-                case 1:
-                {
-                    if (g_British)
-                    {
-                        for (Iter = 0; Iter < g_BritishGrenades; Iter++)
-                            DoD_GiveNamedItem(Player, g_BritishGrenade, Item);
-                    }
-                    else
-                    {
-                        for (Iter = 0; Iter < g_AlliesGrenades; Iter++)
-                            DoD_GiveNamedItem(Player, g_AlliesGrenade, Item);
-                    }
-                }
-                default:
-                    for (Iter = 0; Iter < g_AxisGrenades; Iter++)
-                        DoD_GiveNamedItem(Player, g_AxisGrenade, Item);
-            }
-        }
-SkipNades:
         if (g_FlagHandGuns == (Access & g_FlagHandGuns) &&
             F_HasSecondaryWeapon(Player, Weapon, charsmax(Weapon), Item))
         {
@@ -917,14 +860,7 @@ public OnSqlSelection(FailState, Handle: Query, const Error[], ErrorNum, const D
 
 public DoD_OnGiveNamedItem(Player, Item[], ItemSize /** = 64 */, &OverrideRes)
 { /// Item may be altered during execution.
-    if (!g_InSpawn[Player])
-        return PLUGIN_CONTINUE; /// Skip.
-    if (g_ForceMaxOneNadePerSpawn &&
-        (get_pdata_int(Player, INT_CBasePlayer_m_rgAmmo_ANade) ||
-        get_pdata_int(Player, INT_CBasePlayer_m_rgAmmo_GNade)) &&
-        DoD_IsWeaponGrenade(Item))
-        return PLUGIN_HANDLED;
-    if (g_Fake[Player])
+    if (!g_InSpawn[Player] || g_Fake[Player])
         return PLUGIN_CONTINUE; /// Skip.
     if (DoD_IsWeaponPrimary(Item)) /// Do not auto. give a prim. weap. by default (excl. fake players).
         return PLUGIN_HANDLED;
@@ -1039,6 +975,7 @@ bool: F_IsViewingAMenu(Player)
     return Old > 0 || New > -1;
 }
 
+/**
 bool: F_HasGrenade(Player, Weapon[], Size, &Entity)
 {
     static Item[32], Iter, Num;
@@ -1056,6 +993,7 @@ bool: F_HasGrenade(Player, Weapon[], Size, &Entity)
     }
     return false;
 }
+*/
 
 bool: F_HasSecondaryWeapon(Player, Weapon[], Size, &Entity)
 {

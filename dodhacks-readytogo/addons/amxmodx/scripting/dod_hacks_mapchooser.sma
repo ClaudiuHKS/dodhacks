@@ -27,17 +27,15 @@ native bool: DoD_AreUsersBlockedFromSuicide();
 #endif
 
 enum unsigned: MapDecision_T {
-    Votes,
-    Name[64],
+    m_Votes,
+    m_Name[64],
 };
 
 enum unsigned: Map_T {
-    Nominations,
-    Name[64],
-    Array: Nominators,
+    m_Nominations,
+    m_Name[64],
+    Array: m_Nominators,
 };
-
-/** Votes, Name, Nominations and Nominators are reserved words. Do not use these to declare new variables. */
 
 new g_maxPlayers;
 new g_loadedMaps = 0;
@@ -239,20 +237,20 @@ public plugin_init()
     { /// Load the maps.
         case 0:
         { /// Load from "maps" folder.
-            new Map[Map_T], Len, Dir = open_dir("maps", Map[Name], charsmax(Map[Name]));
+            new Map[Map_T], Len, Dir = open_dir("maps", Map[m_Name], charsmax(Map[m_Name]));
             do { /// Receive all available maps.
-                Len = strlen(Map[Name]);
-                if (Len < 5 || !equali(Map[Name][Len - 4], ".bsp") ||
-                    (g_skipActualMapExclExtension && equali(Map[Name], g_actualMapName, Len - 4)))
+                Len = strlen(Map[m_Name]);
+                if (Len < 5 || !equali(Map[m_Name][Len - 4], ".bsp") ||
+                    (g_skipActualMapExclExtension && equali(Map[m_Name], g_actualMapName, Len - 4)))
                     continue;
-                Map[Name][Len - 4] = EOS;
-                if (!mapPass(Map[Name]))
+                Map[m_Name][Len - 4] = EOS;
+                if (!mapPass(Map[m_Name]))
                     continue;
-                Map[Nominations] = 0;
-                Map[Nominators] = ArrayCreate(32);
+                Map[m_Nominations] = 0;
+                Map[m_Nominators] = ArrayCreate(32);
                 ArrayPushArray(g_arrayMaps, Map);
-                menu_additem(g_menuNominations, Map[Name]);
-            } while (next_file(Dir, Map[Name], charsmax(Map[Name])));
+                menu_additem(g_menuNominations, Map[m_Name]);
+            } while (next_file(Dir, Map[m_Name], charsmax(Map[m_Name])));
             close_dir(Dir);
         }
         case 1:
@@ -272,11 +270,11 @@ public plugin_init()
                 if (!Buffer[0] || (g_skipActualMapExclExtension && equali(Buffer, g_actualMapName)) ||
                     !is_map_valid(Buffer) || !mapPass(Buffer))
                     continue;
-                Map[Nominations] = 0;
-                copy(Map[Name], charsmax(Map[Name]), Buffer);
-                Map[Nominators] = ArrayCreate(32);
+                Map[m_Nominations] = 0;
+                copy(Map[m_Name], charsmax(Map[m_Name]), Buffer);
+                Map[m_Nominators] = ArrayCreate(32);
                 ArrayPushArray(g_arrayMaps, Map);
-                menu_additem(g_menuNominations, Map[Name]);
+                menu_additem(g_menuNominations, Map[m_Name]);
             }
             fclose(Config);
         }
@@ -295,11 +293,11 @@ public plugin_init()
                     (g_skipActualMapExclExtension && equali(Buffer, g_actualMapName)) ||
                     !is_map_valid(Buffer) || !mapPass(Buffer))
                     continue;
-                Map[Nominations] = 0;
-                copy(Map[Name], charsmax(Map[Name]), Buffer);
-                Map[Nominators] = ArrayCreate(32);
+                Map[m_Nominations] = 0;
+                copy(Map[m_Name], charsmax(Map[m_Name]), Buffer);
+                Map[m_Nominators] = ArrayCreate(32);
                 ArrayPushArray(g_arrayMaps, Map);
-                menu_additem(g_menuNominations, Map[Name]);
+                menu_additem(g_menuNominations, Map[m_Name]);
             }
             fclose(Config);
         }
@@ -337,7 +335,7 @@ public plugin_natives()
         pause("cd", "galileo.amxx");
 }
 
-public nativesFilter(const Native[] /** 'Name' is a reserved word. */, Index, bool: Found)
+public nativesFilter(const Native[], Index, bool: Found)
 {
     if (('D' == Native[0] || Native[0] == 'd') && equali(Native, "DoD_AreUsersBlockedFromSuicide"))
         switch (Found)
@@ -383,7 +381,7 @@ public plugin_end()
     for (new Iter = g_loadedMaps - 1; Iter > -1; Iter--)
     { /// Ensure all allocated memory is properly freed.
         ArrayGetArray(g_arrayMaps, Iter, Map);
-        ArrayDestroy(Map[Nominators]);
+        ArrayDestroy(Map[m_Nominators]);
     } /// AMX Mod X will surely free the remaining stuff (mainly arrays and menus).
 #if defined hook_cvar_change
     if (cvarhook: -1 != g_hookMpTimeLimitConVarChange)
@@ -892,7 +890,7 @@ public client_command(Player)
             return PLUGIN_HANDLED; /// Block engine's answer which would tell the seconds.
         }
         else if (g_featureNominations)
-        { /// Nominations feature.
+        { /// m_Nominations feature.
             if (Len > 3 /** "maps"/ "nominate" chat cmd. */ && (equali(Buffer, "nominate") || equali(Buffer, "maps") ||
                 ((Buffer[0] == ',' || Buffer[0] == '.' || Buffer[0] == '/' || Buffer[0] == '!') &&
                 (equali(Buffer[1], "nominate") || equali(Buffer[1], "maps")))))
@@ -942,12 +940,12 @@ public client_command(Player)
                 for (Iter = 0; Iter < g_loadedMaps; Iter++)
                 {
                     ArrayGetArray(g_arrayMaps, Iter, Map);
-                    if (!equali(Map[Name], Buffer))
+                    if (!equali(Map[m_Name], Buffer))
                         continue;
                     if (false == g_isAuthenticated[Player])
                     { /// No Steam received yet.
                         client_print(Player, print_chat, "* Awaiting Steam authentication to nominate '%s'.",
-                            Map[Name]);
+                            Map[m_Name]);
                         return g_hideChatCommands ? PLUGIN_HANDLED : PLUGIN_CONTINUE;
                     }
                     if (g_flagsNominationRequiredAccess != (get_user_flags(Player) & g_flagsNominationRequiredAccess))
@@ -958,20 +956,20 @@ public client_command(Player)
                     if (inDecision())
                     { /// Already deciding.
                         client_print(Player, print_chat, "* Server is already deciding, can't nominate or denominate '%s'.",
-                            Map[Name]);
+                            Map[m_Name]);
                         return g_hideChatCommands ? PLUGIN_HANDLED : PLUGIN_CONTINUE;
                     }
                     if (hasDecided())
                     { /// Already decided.
                         get_pcvar_string(g_cvarAmxNextMap, Buffer, charsmax(Buffer));
                         client_print(Player, print_chat, "* Server decided: %s (%d VOTE%s or %0.0f%%), can't nominate or denominate '%s'.",
-                            Buffer, g_knownDecisionVotes, g_knownDecisionVotes == 1 ? "" : "S", votePercent(g_knownDecisionVotes), Map[Name]);
+                            Buffer, g_knownDecisionVotes, g_knownDecisionVotes == 1 ? "" : "S", votePercent(g_knownDecisionVotes), Map[m_Name]);
                         return g_hideChatCommands ? PLUGIN_HANDLED : PLUGIN_CONTINUE;
                     }
                     if (rockedTheDecision(Rocked, Perc))
                     { /// Vote already rocked.
                         client_print(Player, print_chat, "* Vote has already been rocked (%d PLAYER%s or %0.0f%%), can't nominate or denominate '%s'.",
-                            Rocked, 1 == Rocked ? "" : "S", Perc, Map[Name]);
+                            Rocked, 1 == Rocked ? "" : "S", Perc, Map[m_Name]);
                         return g_hideChatCommands ? PLUGIN_HANDLED : PLUGIN_CONTINUE;
                     }
                     if (!isViewingAMenu(Player))
@@ -981,7 +979,7 @@ public client_command(Player)
                     }
                     else
                         client_print(Player, print_chat, "* You're already viewing a menu, can't nominate or denominate '%s'.",
-                            Map[Name]);
+                            Map[m_Name]);
                     if (g_hideChatCommands)
                         return PLUGIN_HANDLED;
                 }
@@ -1003,11 +1001,11 @@ public OnMenuDecisionItem(Player, Menu, Item)
     if (Item > -1)
     {
         ArrayGetArray(g_arrayMapsDecision, Item, Map);
-        ++Map[Votes];
+        ++Map[m_Votes];
         switch (Item == g_mapsInMenuExcludingExtension)
         {
             case false: /// Voted a map.
-                client_print(Player, print_chat, "* You voted %s.", Map[Name]);
+                client_print(Player, print_chat, "* You voted %s.", Map[m_Name]);
             default: /// Voted to extend the actual map.
                 client_print(Player, print_chat, "* You voted to extend this map.");
         }
@@ -1051,33 +1049,33 @@ public OnMenuItem(Player, Menu, Item)
             return PLUGIN_CONTINUE;
         }
         ArrayGetArray(g_arrayMaps, Item, Map);
-        Entry = ArrayFindString(Map[Nominators], g_playerSteam[Player]);
+        Entry = ArrayFindString(Map[m_Nominators], g_playerSteam[Player]);
         if (Entry > -1)
         { /// Denominate.
-            --Map[Nominations];
-            ArrayDeleteItem(Map[Nominators], Entry);
-            client_print(Player, print_chat, "* You denominated %s.", Map[Name]);
+            --Map[m_Nominations];
+            ArrayDeleteItem(Map[m_Nominators], Entry);
+            client_print(Player, print_chat, "* You denominated %s.", Map[m_Name]);
             if (g_hudMsgNomination)
             {
                 set_hudmessage(200 /** Red. */, 20 /** Green. */, 20 /** Blue. */,
                     g_hudHorPos /** Horizontal position. */, g_hudVerPos /** Vertical position. */,
                     g_hudStyle ? 1 : 0 /** Effect type. */, 0.5 /** Effect time. */,
                     2.0 /** Duration. */, 0.1 /** Fade in time. */, 0.1 /** Fade out time. */);
-                ShowSyncHudMsg(Player, g_hudSyncHandle, "%s DENOMINATED!", Map[Name]);
+                ShowSyncHudMsg(Player, g_hudSyncHandle, "%s DENOMINATED!", Map[m_Name]);
             }
         }
         else
         { /// Nominate.
-            ++Map[Nominations];
-            ArrayPushString(Map[Nominators], g_playerSteam[Player]);
-            client_print(Player, print_chat, "* You nominated %s.", Map[Name]);
+            ++Map[m_Nominations];
+            ArrayPushString(Map[m_Nominators], g_playerSteam[Player]);
+            client_print(Player, print_chat, "* You nominated %s.", Map[m_Name]);
             if (g_hudMsgNomination)
             {
                 set_hudmessage(20 /** Red. */, 200 /** Green. */, 40 /** Blue. */,
                     g_hudHorPos /** Horizontal position. */, g_hudVerPos /** Vertical position. */,
                     g_hudStyle ? 1 : 0 /** Effect type. */, 0.5 /** Effect time. */,
                     2.0 /** Duration. */, 0.1 /** Fade in time. */, 0.1 /** Fade out time. */);
-                ShowSyncHudMsg(Player, g_hudSyncHandle, "%s NOMINATED!", Map[Name]);
+                ShowSyncHudMsg(Player, g_hudSyncHandle, "%s NOMINATED!", Map[m_Name]);
             }
         }
         ArraySetArray(g_arrayMaps, Item, Map);
@@ -1102,7 +1100,7 @@ public Task_FinishDecision()
     unregister_forward(FM_UpdateClientData, g_hookUpdateClientData_Post, true);
     SortADTArray(g_arrayMapsDecision, Sort_Descending, Sort_Integer); /// Sort maps desc. by votes.
     ArrayGetArray(g_arrayMapsDecision, random_num(0, sameEntries() - 1), Map); /// Get the most voted map or a random one if multiple maps were equally voted.
-    if (equali(g_actualMapName, Map[Name]))
+    if (equali(g_actualMapName, Map[m_Name]))
     { /// Extend the actual map.
 #if defined hook_cvar_change
         disable_cvar_hook(g_hookMpTimeLimitConVarChange);
@@ -1113,19 +1111,19 @@ public Task_FinishDecision()
 #endif
         client_print(0, print_chat, "* This map was extended %dm (%d VOTE%s or %0.0f%%), removed all vote rocks.",
             floatround(g_actualMapExtensionMinutes, floatround_tozero /** Truncate. */),
-            Map[Votes], 1 == Map[Votes] ? "" : "S", votePercent(Map[Votes]));
+            Map[m_Votes], 1 == Map[m_Votes] ? "" : "S", votePercent(Map[m_Votes]));
     }
     else
     { /// Change the next map variable.
 #if defined hook_cvar_change
         disable_cvar_hook(g_hookAmxNextMapConVarChange);
 #endif
-        set_pcvar_string(g_cvarAmxNextMap, Map[Name]);
+        set_pcvar_string(g_cvarAmxNextMap, Map[m_Name]);
 #if defined hook_cvar_change
         enable_cvar_hook(g_hookAmxNextMapConVarChange);
 #endif
 #if defined _dodhacks_included /** When players type "nextmap" into their console, show them the correct result. */
-        safeUpdateGameRulesNextMap_DoD(Map[Name]);
+        safeUpdateGameRulesNextMap_DoD(Map[m_Name]);
 #endif
         if (g_changeOnlyAfterActualRound)
         {
@@ -1137,17 +1135,17 @@ public Task_FinishDecision()
             enable_cvar_hook(g_hookMpTimeLimitConVarChange);
 #endif
             client_print(0, print_chat, "* The next map will be %s (%d VOTE%s or %0.0f%%) when round ends.",
-                Map[Name], Map[Votes], 1 == Map[Votes] ? "" : "S", votePercent(Map[Votes]));
+                Map[m_Name], Map[m_Votes], 1 == Map[m_Votes] ? "" : "S", votePercent(Map[m_Votes]));
         }
         else
         {
             Seconds = floatround(60.0 * get_pcvar_float(g_cvarMultiPlayerTimeLimit) - get_gametime(), floatround_tozero /** Truncate. */);
             if (Seconds > 59)
                 client_print(0, print_chat, "* The next map will be %s (%d VOTE%s or %0.0f%%) in %dm.",
-                    Map[Name], Map[Votes], 1 == Map[Votes] ? "" : "S", votePercent(Map[Votes]), Seconds / 60);
+                    Map[m_Name], Map[m_Votes], 1 == Map[m_Votes] ? "" : "S", votePercent(Map[m_Votes]), Seconds / 60);
             else
                 client_print(0, print_chat, "* The next map will be %s (%d VOTE%s or %0.0f%%) in %ds.",
-                    Map[Name], Map[Votes], 1 == Map[Votes] ? "" : "S", votePercent(Map[Votes]), Seconds);
+                    Map[m_Name], Map[m_Votes], 1 == Map[m_Votes] ? "" : "S", votePercent(Map[m_Votes]), Seconds);
         }
     } /// Destroy the menu.
     ArrayClear(g_arrayMapsDecision);
@@ -1155,7 +1153,7 @@ public Task_FinishDecision()
     if (g_greyDecisionMenu)
         menu_destroy(g_menuDecisionGrey);
     updatePlayers(false); /// Let alive players move again.
-    g_knownDecisionVotes = Map[Votes];
+    g_knownDecisionVotes = Map[m_Votes];
     arrayset(g_hasRockedTheDecision, false, sizeof g_hasRockedTheDecision);
 }
 
@@ -1175,15 +1173,15 @@ buildMenu()
     for (Iter = 0; Iter < g_mapsInMenuExcludingExtension; Iter++)
     { /// Add nominated maps, if any.
         ArrayGetArray(g_arrayMaps, Iter, Map);
-        if (Map[Nominations] < 1)
+        if (Map[m_Nominations] < 1)
             break; /// Never been nominated by a player.
-        mapDecision[Votes] = 0;
-        copy(mapDecision[Name], charsmax(mapDecision[Name]), Map[Name]);
+        mapDecision[m_Votes] = 0;
+        copy(mapDecision[m_Name], charsmax(mapDecision[m_Name]), Map[m_Name]);
         ArrayPushArray(g_arrayMapsDecision, mapDecision);
-        menu_additem(g_menuDecision, mapDecision[Name]);
+        menu_additem(g_menuDecision, mapDecision[m_Name]);
         if (g_greyDecisionMenu)
         {
-            formatex(Buffer, charsmax(Buffer), "\\d%s", mapDecision[Name]);
+            formatex(Buffer, charsmax(Buffer), "\\d%s", mapDecision[m_Name]);
             menu_additem(g_menuDecisionGrey, Buffer);
         }
         ++Added; /// Add nominated map to menu.
@@ -1198,13 +1196,13 @@ buildMenu()
                 continue; /// This map was already added into the menu, jump over it.
             ArrayPushCell(Rand, Iter);
             ArrayGetArray(g_arrayMaps, Iter, Map);
-            mapDecision[Votes] = 0;
-            copy(mapDecision[Name], charsmax(mapDecision[Name]), Map[Name]);
+            mapDecision[m_Votes] = 0;
+            copy(mapDecision[m_Name], charsmax(mapDecision[m_Name]), Map[m_Name]);
             ArrayPushArray(g_arrayMapsDecision, mapDecision);
-            menu_additem(g_menuDecision, mapDecision[Name]);
+            menu_additem(g_menuDecision, mapDecision[m_Name]);
             if (g_greyDecisionMenu)
             {
-                formatex(Buffer, charsmax(Buffer), "\\d%s", mapDecision[Name]);
+                formatex(Buffer, charsmax(Buffer), "\\d%s", mapDecision[m_Name]);
                 menu_additem(g_menuDecisionGrey, Buffer);
             }
             ++Added; /// Add random map to menu.
@@ -1212,8 +1210,8 @@ buildMenu()
         while (Added < g_mapsInMenuExcludingExtension);
         ArrayDestroy(Rand); /// Clear old random numbers.
     } /// Now add an extension option.
-    mapDecision[Votes] = 0;
-    copy(mapDecision[Name], charsmax(mapDecision[Name]), g_actualMapName);
+    mapDecision[m_Votes] = 0;
+    copy(mapDecision[m_Name], charsmax(mapDecision[m_Name]), g_actualMapName);
     ArrayPushArray(g_arrayMapsDecision, mapDecision);
     copy(Buffer, charsmax(Buffer), g_actualMapName);
     if (g_wordActualMapExtensionSuffix[0])
@@ -1233,12 +1231,12 @@ buildMenu()
 
 sameEntries()
 {
-    static Iter, Same, Voted /** "Votes" symbol is reserved. */;
+    static Iter, Same, Votes;
     Same = 1;
-    Voted = ArrayGetCell(g_arrayMapsDecision, 0);
+    Votes = ArrayGetCell(g_arrayMapsDecision, 0);
     for (Iter = 1; Iter < g_mapsInMenuExcludingExtension; Iter++)
     {
-        if (Voted != ArrayGetCell(g_arrayMapsDecision, Iter))
+        if (Votes != ArrayGetCell(g_arrayMapsDecision, Iter))
             break;
         ++Same;
     }
@@ -1335,8 +1333,8 @@ bool: rockedTheDecision(&Players, &Float: Perc)
     return Perc >= g_rockTheDecisionMinimumPercent;
 }
 
-Float: votePercent(Voted /** Votes is a reserved word. */)
-    return 100.0 * float(Voted) / float(g_playersDuringEndOfMapVote);
+Float: votePercent(Votes)
+    return 100.0 * float(Votes) / float(g_playersDuringEndOfMapVote);
 
 playingPlayers()
 {
@@ -1578,7 +1576,7 @@ bool: parseFilterConsolePlayerCommand(Player, Len, const Cmd[], &bool: Continue)
 }
 
 bool: mayPlayerAccessConsoleCommand(Player, const Cmd[])
-{ /// "Name" is a reserved word.
+{
     static Access, Cmds, Iter, cmdName[32], Info[2], Flags;
     Access = get_user_flags(Player);
     Cmds = get_clcmdsnum(Access);
@@ -1618,7 +1616,7 @@ bool: tryLoadMapMinutesFromServerCfg(&Float: Mins)
     return false;
 }
 
-bool: safeDisablePluginIfRunning(const logFile[], const pluginFileName[] /** 'Name' is a reserved word in this plugin. */)
+bool: safeDisablePluginIfRunning(const logFile[], const pluginFileName[])
 {
     new Buffer[256];
     get_localinfo("amxx_plugins", Buffer, charsmax(Buffer));
