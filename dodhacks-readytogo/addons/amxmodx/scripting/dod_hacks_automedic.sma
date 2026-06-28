@@ -20,7 +20,7 @@ new Float: g_Delay; /// The delay in seconds between the moment of getting wound
 
 public plugin_init()
 {
-    register_plugin("DoD Hacks: Auto Medic", "1.0.1.0", "Hattrick HKS (claudiuhks)");
+    register_plugin("DoD Hacks: Auto Medic", "1.0.1.1", "Hattrick HKS (claudiuhks)");
 
     g_maxPlayers = get_maxplayers();
     set_task(g_taskInterval, "Task_HealPlayers", .flags = "b");

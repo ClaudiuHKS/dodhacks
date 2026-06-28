@@ -2762,7 +2762,7 @@ void CmdStart(::edict_s* pPlayer, ::usercmd_s* pCmd, ::size_t randomSeed)
         return false;
     }
 
-    auto pSig = ::g_fn_GetAmxString(pAmx, pParam[2], false, &Len);
+    auto pSig = ::g_fn_GetAmxString(pAmx, pParam[2], true, &Len);
     if (Len < 1 || !pSig || false == *pSig)
     {
         ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "Invalid signature string (null or empty)!");
@@ -3063,7 +3063,7 @@ void CmdStart(::edict_s* pPlayer, ::usercmd_s* pCmd, ::size_t randomSeed)
         return false;
     }
 
-    auto pSym = ::g_fn_GetAmxString(pAmx, pParam[2], false, &Len);
+    auto pSym = ::g_fn_GetAmxString(pAmx, pParam[2], true, &Len);
     if (Len < 1 || !pSym || false == *pSym)
     {
         ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "Invalid symbol string (null or empty)!");
@@ -3129,7 +3129,7 @@ void CmdStart(::edict_s* pPlayer, ::usercmd_s* pCmd, ::size_t randomSeed)
         return false;
     }
 
-    auto pStr = ::g_fn_GetAmxString(pAmx, pParam[2], false, &Len);
+    auto pStr = ::g_fn_GetAmxString(pAmx, pParam[2], true, &Len);
     if (Len < 1 || !pStr || false == *pStr)
     {
         ::MF_LogError(pAmx, ::AMX_ERR_NATIVE, "Invalid const. string (null or empty)!");

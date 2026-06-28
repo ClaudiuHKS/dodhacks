@@ -178,13 +178,12 @@ void Client_Health_End(void* mValue)
 
 		aim = pAttacker->aiming;
 
-		const unsigned char* pBase = (unsigned char*)mPlayer->pEdict->pvPrivateData;
-		if (pBase)
-#ifndef __linux__
-			aim = *(int*)(pBase + (::size_t)dodstats_ofslasthitgroup->value);
-#else
-			aim = *(int*)(pBase + (::size_t)dodstats_ofslasthitgroup->value + (::size_t)dodstats_linuxofsadd->value);
-#endif
+		if (m_LastHitGroup > 0)
+		{
+			const unsigned char* pBase = (unsigned char*)mPlayer->pEdict->pvPrivateData;
+			if (pBase)
+				aim = *(int*)(pBase + m_LastHitGroup);
+		}
 
 		if ( weaponData[weapon].melee )
 			pAttacker->saveShot(weapon);
@@ -192,6 +191,12 @@ void Client_Health_End(void* mValue)
 	else 
 	{
 		g_grenades.find(enemy , &pAttacker , weapon);
+		if (m_LastHitGroup > 0)
+		{
+			const unsigned char* pBase = (unsigned char*)mPlayer->pEdict->pvPrivateData;
+			if (pBase)
+				aim = *(int*)(pBase + m_LastHitGroup);
+		}
 	}
 
 	int TA = 0;

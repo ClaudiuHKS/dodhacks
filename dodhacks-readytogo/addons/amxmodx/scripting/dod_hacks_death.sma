@@ -6,7 +6,7 @@
 public plugin_init()
 {
     register_plugin(
-        "DoD Hacks: Death", "1.0.1.0", "Hattrick HKS (claudiuhks)"
+        "DoD Hacks: Death", "1.0.1.1", "Hattrick HKS (claudiuhks)"
     );
 
     new Buffer[256];
