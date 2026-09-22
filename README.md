@@ -6,5 +6,8 @@ https://forums.alliedmods.net/showthread.php?t=352210
 - Supports fake players (bots).
 - Supports `rehlds`, `steam_legacy` and `beta`.
 
+## DoD X Module (updated) ##
+- It provides a fix for proper `headshot` detection.
+
 ## Contributors ##
 - [Fysiks](https://github.com/fysiks1)
