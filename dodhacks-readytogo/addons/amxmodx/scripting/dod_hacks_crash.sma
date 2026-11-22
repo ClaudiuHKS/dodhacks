@@ -71,10 +71,7 @@ public Task_QueryPlayerConVars_Delayed(taskIndex)
 #endif
     if (g_isPlayerInServer[Player])
     {
-        query_client_cvar(Player, "joystick",      "onPlayerConVarCheck", sizeof Arg, Arg);
-        query_client_cvar(Player, "mp_decals",     "onPlayerConVarCheck", sizeof Arg, Arg);
-        query_client_cvar(Player, "sp_decals",     "onPlayerConVarCheck", sizeof Arg, Arg);
-        query_client_cvar(Player, "cl_particlefx", "onPlayerConVarCheck", sizeof Arg, Arg);
+        query_client_cvar(Player, "joystick", "onPlayerConVarCheck", sizeof Arg, Arg);
     }
 }
 
@@ -134,34 +131,6 @@ public onPlayerConVarCheck(Player, const Key[], const Val[], const Arg[])
     if (g_isPlayerInServer[Player])
         switch (Key[0])
         {
-            case 's', 'S':
-            {
-                Value = str_to_num(Val);
-                if (Value < 1024)
-                {
-                    formatex(Msg, charsmax(Msg),
-                        "* Your '%s' cvar is a bit low (%d/ 4096). If you crash, consider increasing.",
-                        Key, Value);
-                    createPlayerMsgArrayIfNeeded(Player, sizeof Msg);
-                    ArrayPushString(g_playerNotifications[Player], Msg);
-                    set_task(random_float(g_minNotifySeconds, g_maxNotifySeconds), "Task_NotifyPlayer_Delayed",
-                        g_playerUniqueUserIndex[Player] + TaskOffs_QueryClientCvar);
-                }
-            }
-            case 'm', 'M':
-            {
-                Value = str_to_num(Val);
-                if (Value < 1024)
-                {
-                    formatex(Msg, charsmax(Msg),
-                        "* Your '%s' cvar is a bit low (%d/ 4096). If you crash, consider increasing.",
-                        Key, Value);
-                    createPlayerMsgArrayIfNeeded(Player, sizeof Msg);
-                    ArrayPushString(g_playerNotifications[Player], Msg);
-                    set_task(random_float(g_minNotifySeconds, g_maxNotifySeconds), "Task_NotifyPlayer_Delayed",
-                        g_playerUniqueUserIndex[Player] + TaskOffs_QueryClientCvar);
-                }
-            }
             case 'j', 'J':
             {
                 Value = str_to_num(Val);
@@ -169,20 +138,6 @@ public onPlayerConVarCheck(Player, const Key[], const Val[], const Arg[])
                 {
                     formatex(Msg, charsmax(Msg),
                         "* Your '%s' cvar is enabled (%d/ 1). If you have problems pronning, consider disabling.",
-                        Key, Value);
-                    createPlayerMsgArrayIfNeeded(Player, sizeof Msg);
-                    ArrayPushString(g_playerNotifications[Player], Msg);
-                    set_task(random_float(g_minNotifySeconds, g_maxNotifySeconds), "Task_NotifyPlayer_Delayed",
-                        g_playerUniqueUserIndex[Player] + TaskOffs_QueryClientCvar);
-                }
-            }
-            case 'c', 'C':
-            {
-                Value = str_to_num(Val);
-                if (Value)
-                {
-                    formatex(Msg, charsmax(Msg),
-                        "* Your '%s' cvar is turned on (%d/ 2). If you crash, consider disabling.",
                         Key, Value);
                     createPlayerMsgArrayIfNeeded(Player, sizeof Msg);
                     ArrayPushString(g_playerNotifications[Player], Msg);
