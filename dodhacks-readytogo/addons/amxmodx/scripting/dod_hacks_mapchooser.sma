@@ -81,10 +81,12 @@ new bool: g_featureRockDecision;
 new bool: g_exclVoteMapResource;
 new bool: g_exclVoteMapSturmBot;
 new bool: g_exclVoteMapShrikeBot;
+new bool: g_exclVoteMapNewBot;
 new bool: g_exclVoteMapMarineBotWpt;
 new bool: g_exclVoteMapMarineBotPth;
 new bool: g_exclVoteMapOverviewBmp;
 new bool: g_exclVoteMapOverviewTxt;
+new bool: g_onlyChangeFakePlayerVelocity;
 new bool: g_hideChatCommands;
 new bool: g_greyDecisionMenu;
 new bool: g_nominateByChatMapName;
@@ -199,6 +201,10 @@ public plugin_init()
             g_exclVoteMapResource = bool: str_to_num(Val);
         else if (equali(Key, "@mapchooser_exclshrike"))
             g_exclVoteMapShrikeBot = bool: str_to_num(Val);
+        else if (equali(Key, "@mapchooser_onlyfakevel"))
+            g_onlyChangeFakePlayerVelocity = bool: str_to_num(Val);
+        else if (equali(Key, "@mapchooser_exclnewbot"))
+            g_exclVoteMapNewBot = bool: str_to_num(Val);
         else if (equali(Key, "@mapchooser_exclmarinewpt"))
             g_exclVoteMapMarineBotWpt = bool: str_to_num(Val);
         else if (equali(Key, "@mapchooser_exclmarinepth"))
@@ -1265,11 +1271,27 @@ updatePlayer(Player, bool: Freeze)
         {
             if (is_user_alive(Player))
             { /// During the vote, alive players are literally frozen. They are not allowed to move or attack another players.
-                set_pev(Player, pev_flags, pev(Player, pev_flags) | FL_FROZEN);
-                set_pev(Player, pev_button, 0);
-                set_pev(Player, pev_oldbuttons, 0);
-                set_pev(Player, pev_impulse, 0);
-                set_pev(Player, pev_velocity, Float: { 0.0, 0.0, 0.0 });
+                if (!g_isFakePlayer[Player])
+                {
+                    set_pev(Player, pev_flags, pev(Player, pev_flags) | FL_FROZEN);
+                    set_pev(Player, pev_button, 0);
+                    set_pev(Player, pev_oldbuttons, 0);
+                    set_pev(Player, pev_impulse, 0);
+                    set_pev(Player, pev_velocity, Float: { 0.0, 0.0, 0.0 });
+                }
+                else
+                {
+                    if (!g_onlyChangeFakePlayerVelocity)
+                    {
+                        set_pev(Player, pev_flags, pev(Player, pev_flags) | FL_FROZEN);
+                        set_pev(Player, pev_button, 0);
+                        set_pev(Player, pev_oldbuttons, 0);
+                        set_pev(Player, pev_impulse, 0);
+                        set_pev(Player, pev_velocity, Float: { 0.0, 0.0, 0.0 });
+                    }
+                    else
+                        set_pev(Player, pev_velocity, Float: { 2.5, 2.5, 2.5 });
+                }
             }
             else
                 set_pev(Player, pev_flags, pev(Player, pev_flags) & ~FL_FROZEN);
@@ -1386,6 +1408,12 @@ bool: mapPass(const Map[])
     if (g_exclVoteMapShrikeBot)
     {
         formatex(Path, charsmax(Path), "shrikebot/waypoints/%s.wps", Map);
+        if (!file_exists(Path))
+            return false;
+    }
+    if (g_exclVoteMapNewBot)
+    {
+        formatex(Path, charsmax(Path), "new_bot/waypoints/%s.wpt", Map);
         if (!file_exists(Path))
             return false;
     }
