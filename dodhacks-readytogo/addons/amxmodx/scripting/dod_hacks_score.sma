@@ -6,6 +6,8 @@
 #define m_CBasePlayer_iObjScore 476
 #define m_CBasePlayer_iDeaths   477
 
+#define taskOfs_Score          8256 /// 8192+64 (a value other plugins do not use).
+
 enum unsigned: DoD_Score
 {
     m_Steam[64],
@@ -76,9 +78,15 @@ public client_putinserver(Player)
             ArrayGetArray(g_Scores, Iter, Score);
             if (equali(g_Steam[Player], Score[m_Steam]))
             { /// Found one.
-                set_pdata_int(Player, m_CBasePlayer_iDeaths,   Score[m_Deaths]);
-                set_pdata_int(Player, m_CBasePlayer_iObjScore, Score[m_Score]);
-                set_pev      (Player, pev_frags,               Score[m_Frags]);
+                if (pev_valid(Player) > 1)
+                { /// Ensure private data is allocated before writing memory.
+                    set_pdata_int(Player, m_CBasePlayer_iDeaths,   Score[m_Deaths]);
+                    set_pdata_int(Player, m_CBasePlayer_iObjScore, Score[m_Score]);
+                    set_pev      (Player, pev_frags,               Score[m_Frags]);
+                }
+                else /// Sometimes, a small delay is needed.
+                    set_task(0.000001, "Task_ReApplyScores_Delayed",
+                        taskOfs_Score + get_user_userid(Player), Score, sizeof Score);
                 ArrayDeleteItem(g_Scores, Iter);
                 g_Entries--; /// Erase the entry once read & score restored.
                 break;
@@ -86,6 +94,19 @@ public client_putinserver(Player)
         }
     }
     return PLUGIN_CONTINUE;
+}
+
+public Task_ReApplyScores_Delayed(const Score[DoD_Score], taskIndex)
+{
+    static Player;
+    Player = find_player("k", taskIndex - taskOfs_Score);
+    if (Player > 0 && pev_valid(Player) > 1) /// Ensure player is in server.
+    { /// Ensure private data is allocated before writing memory.
+        set_pdata_int(Player, m_CBasePlayer_iDeaths,   Score[m_Deaths]);
+        set_pdata_int(Player, m_CBasePlayer_iObjScore, Score[m_Score]);
+        set_pev      (Player, pev_frags,               Score[m_Frags]);
+    }
+    return PLUGIN_HANDLED;
 }
 
 #if !defined client_disconnected
