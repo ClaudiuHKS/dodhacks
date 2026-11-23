@@ -137,7 +137,7 @@ public onPlayerConVarCheck(Player, const Key[], const Val[], const Arg[])
                 if (Value)
                 {
                     formatex(Msg, charsmax(Msg),
-                        "* Your '%s' cvar is enabled (%d/ 1). If you have problems pronning, consider disabling.",
+                        "* Your '%s' cvar is enabled (%d/ 1). If you have problems proning, turn it off.",
                         Key, Value);
                     createPlayerMsgArrayIfNeeded(Player, sizeof Msg);
                     ArrayPushString(g_playerNotifications[Player], Msg);
