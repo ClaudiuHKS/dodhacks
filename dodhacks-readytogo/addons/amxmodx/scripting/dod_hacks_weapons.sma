@@ -7,6 +7,7 @@
 #include <dodconst>
 #include <dodhacks>
 #tryinclude <dod_hacks_knives> /// Works without this as well.
+#tryinclude <dod_killingspree> /// Works without this as well.
 
 ///
 /// Either "mysql", "sqlite" or both should be enabled in /dod/addons/amxmodx/configs/modules.ini
@@ -26,6 +27,10 @@
 
 #if !defined _dod_hacks_knives_included /// Works without this too.
 native bool: DoD_IsUserWaitingThrowingKnife(Player);
+#endif
+
+#if !defined _dod_killingspree_included /// Works without this too.
+native bool: DoD_IsInKillingSpree();
 #endif
 
 new Handle: g_tmpSqlConnectionTuple = Empty_Handle; /// Non-threaded temporary database storage.
@@ -53,6 +58,7 @@ new bool: g_NoAutoGunsForClasses; /// Whether to disable choosing a custom gun w
 new bool: g_InitiallyStripPrim; /// Whether to try removing player primary weapon at spawn before assigning the newer gun.
 new bool: g_AutoErase; /// Whether to erase primary weapon (default one) from the player during their spawn.
 new bool: g_Local; /// Local storage in use.
+new bool: g_killingSpreeCalls = true; /// Whether dod_killingspree is in use.
 new bool: g_HideMsg; /// Whether or not to hide the 'guns' chat command typed by the players.
 new bool: g_British; /// Map is optimized for British against Axis.
 new bool: g_Delete; /// Delete the dropped gun when selecting a new one via the menu.
@@ -296,17 +302,31 @@ public plugin_natives()
 
 public nativesFilter(const Name[], Index, bool: Found)
 {
-    if (('D' == Name[0] || Name[0] == 'd') && equali(Name, "DoD_IsUserWaitingThrowingKnife"))
-        switch (Found)
-        {
-            case true:
-                g_badIsUserWaitingThrowingKnife = false;
-            default:
+    if ('D' == Name[0] || Name[0] == 'd')
+    {
+        if (equali(Name, "DoD_IsUserWaitingThrowingKnife"))
+            switch (Found)
             {
-                g_badIsUserWaitingThrowingKnife = true;
-                return PLUGIN_HANDLED;
+                case true:
+                    g_badIsUserWaitingThrowingKnife = false;
+                default:
+                {
+                    g_badIsUserWaitingThrowingKnife = true;
+                    return PLUGIN_HANDLED;
+                }
             }
-        }
+        else if (equali(Name, "DoD_IsInKillingSpree"))
+            switch (Found)
+            {
+                case true:
+                    g_killingSpreeCalls = true;
+                default:
+                {
+                    g_killingSpreeCalls = false;
+                    return PLUGIN_HANDLED;
+                }
+            }
+    }
     return PLUGIN_CONTINUE;
 }
 
@@ -601,6 +621,11 @@ public OnWeaponMenuItem(Player, Menu, Item)
                 client_print(Player, print_chat, "* A custom weapon and your player class are incompatible.");
                 return PLUGIN_HANDLED;
             }
+        }
+        if (g_killingSpreeCalls && DoD_IsInKillingSpree())
+        {
+            client_print(Player, print_chat, "* A custom weapon and the killingspree round are incompatible.");
+            return PLUGIN_HANDLED;
         }
         Access = get_user_flags(Player);
         if (g_Flag != (Access & g_Flag))

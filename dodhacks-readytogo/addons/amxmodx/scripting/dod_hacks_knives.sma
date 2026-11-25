@@ -5,9 +5,14 @@
 #include <hamsandwich>
 #include <dodconst>
 #include <dodhacks>
+#tryinclude <dod_killingspree> /// Works without this too.
 
 #if !defined SetHamParamItemInfo /// The AMX Mod X version that added 'Ham_DOD_Item_DropGren' has also added 'SetHamParamItemInfo()'.
 #error AMX Mod X version too old to handle dod_hacks_knives plugin! Consider upgrading! ('Ham_DOD_Item_DropGren' is needed ...)
+#endif
+
+#if !defined _dod_killingspree_included /// Works without this too.
+native bool: DoD_IsInKillingSpree();
 #endif
 
 #define Linux_Difference_Offset_Weapons         4            /// +4 only on Linux. For 'get_pdata_*' funcs. Weapon entities only.
@@ -49,6 +54,7 @@ new Float: g_pitchAngleOffs_Spade;
 new Float: g_pitchAngleOffs_GerKnife;
 new Float: g_pitchAngleOffs_AmerKnife;
 new DoD_Address: g_wpnBoxKill = DoD_Address: DoD_Address_Null;
+new bool: g_killingSpreeCalls = true;
 
 public plugin_init()
 {
@@ -160,13 +166,42 @@ public OnMsgIntermission()
     g_isBetweenRounds = true;
 
 public plugin_natives()
+{
+    set_native_filter("nativesFilter");
+
     register_native("DoD_IsUserWaitingThrowingKnife", "Func_IsUserWaitingThrowingKnife");
+    register_native("DoD_AllowAllPlayersThrowKnives", "Func_AllowAllPlayersThrowKnives");
+}
+
+public nativesFilter(const Name[], Index, bool: Found)
+{
+    if (('D' == Name[0] || Name[0] == 'd') && equali(Name, "DoD_IsInKillingSpree"))
+        switch (Found)
+        {
+            case true:
+                g_killingSpreeCalls = true;
+            default:
+            {
+                g_killingSpreeCalls = false;
+                return PLUGIN_HANDLED;
+            }
+        }
+    return PLUGIN_CONTINUE;
+}
 
 public Func_IsUserWaitingThrowingKnife()
 {
     static Player;
     Player = get_param(1);
     return isPlayerEntity(Player) ? g_isPlayerAwaiting[Player] : false;
+}
+
+public Func_AllowAllPlayersThrowKnives()
+{
+    static Player;
+    for (Player = 1; Player <= g_maxPlayers; Player++)
+        if (g_isPlayerInServer[Player] && !g_isPlayerAwaiting[Player] && is_user_alive(Player))
+            g_canPlayerThrow[Player] = true;
 }
 
 public OnPlayer_Touch_Pre(Player, Other)
@@ -295,7 +330,15 @@ public OnWeaponBox_Touch_Pre(weaponBox, Entity)
         {
             pev(weaponBox, ThrowingKnives_EntityKeyForTime, Time);
             if (Time > g_playerSpawnTime[Owner])
-                g_canPlayerThrow[Owner] = false;
+            {
+                if (!g_killingSpreeCalls)
+                    g_canPlayerThrow[Owner] = false;
+                else
+                {
+                    if (!DoD_IsInKillingSpree())
+                        g_canPlayerThrow[Owner] = false;
+                }
+            }
         }
         DoD_WpnBoxKill(weaponBox);
         g_isPlayerAwaiting[Owner] = false;
@@ -323,7 +366,15 @@ public OnWeaponBox_Touch_Pre(weaponBox, Entity)
         {
             pev(weaponBox, ThrowingKnives_EntityKeyForTime, Time);
             if (Time > g_playerSpawnTime[Owner])
-                g_canPlayerThrow[Owner] = false;
+            {
+                if (!g_killingSpreeCalls)
+                    g_canPlayerThrow[Owner] = false;
+                else
+                {
+                    if (!DoD_IsInKillingSpree())
+                        g_canPlayerThrow[Owner] = false;
+                }
+            }
         }
         DoD_WpnBoxKill(weaponBox);
         g_isPlayerAwaiting[Owner] = false;
@@ -351,7 +402,8 @@ handlePlayerAttack:
                 sendHealthMsgNotifyingDoDXStats(Entity); /// Save kill as knife kill and update player rank.
                 pev(weaponBox, ThrowingKnives_EntityKeyForTime, Time);
                 DoD_WpnBoxKill(weaponBox);
-                if ((false == g_infiniteAttacks || false == g_infiniteAttempts) && Time > g_playerSpawnTime[Owner])
+                if ((false == g_infiniteAttacks || false == g_infiniteAttempts) && Time > g_playerSpawnTime[Owner] &&
+                    (!g_killingSpreeCalls || !DoD_IsInKillingSpree()))
                     g_canPlayerThrow[Owner] = false;
             }
             else
@@ -363,7 +415,15 @@ handlePlayerAttack:
                 {
                     pev(weaponBox, ThrowingKnives_EntityKeyForTime, Time);
                     if (Time > g_playerSpawnTime[Owner])
-                        g_canPlayerThrow[Owner] = false;
+                    {
+                        if (!g_killingSpreeCalls)
+                            g_canPlayerThrow[Owner] = false;
+                        else
+                        {
+                            if (!DoD_IsInKillingSpree())
+                                g_canPlayerThrow[Owner] = false;
+                        }
+                    }
                 }
                 DoD_WpnBoxKill(weaponBox);
             }
@@ -374,7 +434,15 @@ handlePlayerAttack:
         {
             pev(weaponBox, ThrowingKnives_EntityKeyForTime, Time);
             if (Time > g_playerSpawnTime[Owner])
-                g_canPlayerThrow[Owner] = false;
+            {
+                if (!g_killingSpreeCalls)
+                    g_canPlayerThrow[Owner] = false;
+                else
+                {
+                    if (!DoD_IsInKillingSpree())
+                        g_canPlayerThrow[Owner] = false;
+                }
+            }
         }
         DoD_WpnBoxKill(weaponBox);
         g_isPlayerAwaiting[Owner] = false;
@@ -419,7 +487,8 @@ public Task_RestorePlayerItems(Buffer[1], taskIndex)
 #else
     Player = readPlayerFromUniqueUserIndex(taskIndex - ThrowingKnives_UserIdTaskOffset);
 #endif
-    if (!g_isPlayerInServer[Player] || !is_user_alive(Player))
+    if (!g_isPlayerInServer[Player] || !is_user_alive(Player) ||
+        (g_killingSpreeCalls && DoD_IsInKillingSpree()))
         return PLUGIN_HANDLED; /// Can't restore anything.
     if (g_isPlayerAwaiting[Player])
     { /// Re-try.

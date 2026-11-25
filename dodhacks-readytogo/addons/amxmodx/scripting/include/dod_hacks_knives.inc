@@ -26,3 +26,10 @@
  * real knife kill.
  */
 native bool: DoD_IsUserWaitingThrowingKnife(Player);
+
+/**
+ * Allows all alive
+ * players throw their
+ * knives (again).
+ */
+native bool: DoD_AllowAllPlayersThrowKnives();
