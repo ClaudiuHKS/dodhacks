@@ -97,6 +97,7 @@ new bool: g_loadMpTimeLimitFromServerCfg;
 new bool: g_badAreUsersBlockedFromSuicide;
 new bool: g_isInServer[33];
 new bool: g_isFakePlayer[33];
+new bool: g_isHLTV[33];
 new bool: g_isAuthenticated[33];
 new bool: g_shouldBeNoticed[33];
 new bool: g_hasRockedTheDecision[33];
@@ -422,6 +423,7 @@ public client_connect(Player)
 public client_putinserver(Player)
 {
     g_isInServer[Player] = true;
+    g_isHLTV[Player] = bool: is_user_hltv(Player);
     g_isFakePlayer[Player] = bool: is_user_bot(Player);
     g_shouldBeNoticed[Player] = false == g_isFakePlayer[Player] && g_decisionStartTime &&
         get_gametime() - g_decisionStartTime < g_decisionDuration + AUDIO_DURATION;
@@ -514,7 +516,7 @@ public OnMenuPage(Player, Status)
 public OnPlayerClConCmd_Nominate(Player)
 {
     static Map[64], Rocked, Float: Perc;
-    if (g_isInServer[Player] && false == g_isFakePlayer[Player])
+    if (g_isInServer[Player] && false == g_isFakePlayer[Player] && false == g_isHLTV[Player])
     {
         if (false == g_isAuthenticated[Player])
         { /// No Steam received yet.
@@ -555,7 +557,7 @@ public OnPlayerClConCmd_Nominate(Player)
 public OnPlayerClConCmd_RockDecision(Player)
 {
     static Map[64], Rocked, Float: Time, Float: Perc;
-    if (g_isInServer[Player] && false == g_isFakePlayer[Player])
+    if (g_isInServer[Player] && false == g_isFakePlayer[Player] && false == g_isHLTV[Player])
     {
         Time = get_gametime();
         if (Time < g_rockTheDecisionMapStartDelay)
@@ -700,7 +702,7 @@ public Task_DisplayDecisionGreyMenu()
     for (Player = 1; Player <= g_maxPlayers; Player++)
         if (g_isInServer[Player])
         {
-            if (false == g_isFakePlayer[Player])
+            if (false == g_isFakePlayer[Player] && false == g_isHLTV[Player])
                 menu_display(Player, g_menuDecisionGrey);
             updatePlayer(Player, true); /// Stop alive players from moving.
         }
@@ -723,7 +725,7 @@ public Task_DisplayDecisionNormalMenu()
     for (Player = 1; Player <= g_maxPlayers; Player++)
         if (g_isInServer[Player])
         {
-            if (false == g_isFakePlayer[Player] && ++g_playersDuringEndOfMapVote)
+            if (false == g_isFakePlayer[Player] && false == g_isHLTV[Player] && ++g_playersDuringEndOfMapVote)
             {
                 client_cmd(Player, "spk gman/gman_choose%d", random_num(1, 2));
                 menu_display(Player, g_menuDecision);
@@ -738,7 +740,7 @@ public Task_DisplayDecisionMenu()
     for (Player = 1; Player <= g_maxPlayers; Player++)
         if (g_isInServer[Player])
         {
-            if (false == g_isFakePlayer[Player] && ++g_playersDuringEndOfMapVote)
+            if (false == g_isFakePlayer[Player] && false == g_isHLTV[Player] && ++g_playersDuringEndOfMapVote)
             {
                 client_cmd(Player, "spk gman/gman_choose%d", random_num(1, 2));
                 menu_display(Player, g_menuDecision);
@@ -832,7 +834,7 @@ public OnPlayerPreAndPostThink_Post(Player) /// Only executed while voting. Exec
 public client_command(Player)
 {
     static Buffer[64], Map[Map_T], Len, Rocked, Iter, Float: Time, Float: Perc, bool: Continue;
-    if (g_isFakePlayer[Player])
+    if (g_isFakePlayer[Player] || g_isHLTV[Player])
         return PLUGIN_CONTINUE; /// Skip, as a fake player is executing this command.
     Len = read_argv(0, Buffer, charsmax(Buffer));
     if (Len < 3) /// "say" cmd.
@@ -1341,6 +1343,7 @@ bool: canDecide()
 zeroPlayerVars(Player)
 {
     g_isInServer[Player] = false;
+    g_isHLTV[Player] = false;
     g_isFakePlayer[Player] = false;
     g_isAuthenticated[Player] = false;
     g_shouldBeNoticed[Player] = false;
@@ -1364,7 +1367,7 @@ playingPlayers()
     Playing = 0;
     for (Player = 1; Player <= g_maxPlayers; Player++)
     {
-        if (false == g_isInServer[Player] || g_isFakePlayer[Player] || get_user_team(Player) < 1)
+        if (false == g_isInServer[Player] || g_isFakePlayer[Player] || g_isHLTV[Player] || get_user_team(Player) < 1)
             continue;
         Playing++;
     }

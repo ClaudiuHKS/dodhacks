@@ -55,7 +55,7 @@ public client_putinserver(Player)
     g_isPlayerInServer[Player] = true;
     g_playerNotifications[Player] = Invalid_Array;
     g_playerUniqueUserIndex[Player] = get_user_userid(Player);
-    if (!is_user_bot(Player))
+    if (!is_user_bot(Player) && !is_user_hltv(Player))
         set_task(0.000001, "Task_QueryPlayerConVars_Delayed",
             TaskOffs_ClientPutInServer + g_playerUniqueUserIndex[Player]);
 }

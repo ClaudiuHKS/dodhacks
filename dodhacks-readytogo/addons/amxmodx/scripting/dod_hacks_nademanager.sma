@@ -75,6 +75,7 @@ new bool: g_isInServer[33]; /// Whether or not the player is in server.
 new bool: g_inSpawn[33]; /// Whether we are inside DoD_OnPlayerSpawn() function at the moment.
 new bool: g_isAuthenticated[33]; /// Player is authorized. (**)
 new bool: g_isFakePlayer[33]; /// Whether or not the player is a BOT (a fake player).
+new bool: g_HLTV[33]; /// Whether or not the player is a HLTV proxy.
 new bool: g_isDead[33]; /// Whether or not the player has died and can't pick up explo. nades from floor anymore. (***)
 new bool: g_usingImpa[33]; /// Player's on-impact explo. nade proj. deton. status. (**)
 new bool: g_impaNades; /// Whether or not on-impact explo. nade proj. deton. is enabled.
@@ -493,7 +494,7 @@ public OnSetModel_Post(Entity)
 public client_command(Player)
 {
     static Cmd[16], Arg[32];
-    if (g_impaNades && g_isInServer[Player] && read_argv(0, Cmd, charsmax(Cmd)) > 2 &&
+    if (g_impaNades && g_isInServer[Player] && !g_HLTV[Player] && read_argv(0, Cmd, charsmax(Cmd)) > 2 &&
         (equali(Cmd, "say") || equali(Cmd, "say_team")))
     {
         if (read_argv(1, Arg, charsmax(Arg)) >= g_cmdImpaLen && (equali(Arg, g_cmdImpa) ||
@@ -523,7 +524,7 @@ public client_command(Player)
 
 public OnPlayerClConCmd_InstaNades(Player)
 {
-    if (!g_isInServer[Player])
+    if (!g_isInServer[Player] || g_HLTV[Player])
         return PLUGIN_HANDLED;
     if (g_Flags != (get_user_flags(Player) & g_Flags))
     { /// No access.
@@ -715,11 +716,12 @@ public client_putinserver(Player)
 {
     g_isInServer[Player] = true;
     g_isFakePlayer[Player] = bool: is_user_bot(Player);
+    g_HLTV[Player] = bool: is_user_hltv(Player);
 }
 
 public DOD_ON_PLAYER_DISCONNECTED
 {
-    if (g_impaNades && g_initiallyConnected && false == g_isFakePlayer[Player] && g_isAuthenticated[Player])
+    if (g_impaNades && g_initiallyConnected && false == g_isFakePlayer[Player] && g_isAuthenticated[Player] && false == g_HLTV[Player])
     { /// Store the selection.
         if (g_isStorageLocal)
             formatex(g_Buffer, charsmax(g_Buffer),
@@ -914,6 +916,7 @@ zeroPlayerGlobals(Player)
 {
     g_isDead[Player] = false;
     g_usingImpa[Player] = false;
+    g_HLTV[Player] = false;
     g_isInServer[Player] = false;
     g_isFakePlayer[Player] = false;
     g_isAuthenticated[Player] = false;

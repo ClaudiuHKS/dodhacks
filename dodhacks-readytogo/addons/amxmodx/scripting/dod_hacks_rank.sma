@@ -60,6 +60,7 @@ new bool: g_areRanksSteamBased;
 new bool: g_doAlterPlayerDeaths;
 new bool: g_requireMinPlayersForRanking;
 new bool: g_isPlayerFake[33];
+new bool: g_HLTV[33];
 new bool: g_isPlayerAuth[33];
 new bool: g_isPlayerInServer[33];
 new Float: g_welcomeTaskDelay;
@@ -264,6 +265,7 @@ public client_connect(Player)
 {
     g_isPlayerAuth[Player]     = false;
     g_isPlayerFake[Player]     = false;
+    g_HLTV[Player]             = false;
     g_isPlayerInServer[Player] = false;
     g_playerJoinUnixTimeStamp[Player] =  get_systime();
     g_playerRankEntry[Player]         = -1;
@@ -293,6 +295,7 @@ public DOD_ON_PLAYER_DISCONNECTED
     }
     g_isPlayerAuth[Player]     = false;
     g_isPlayerFake[Player]     = false;
+    g_HLTV[Player]             = false;
     g_isPlayerInServer[Player] = false;
     g_playerJoinUnixTimeStamp[Player] =  0;
     g_playerRankEntry[Player]         = -1;
@@ -312,6 +315,7 @@ public client_authorized(Player)
 #endif
     g_isPlayerAuth[Player] = true;
     g_isPlayerFake[Player] = bool: is_user_bot(Player);
+    g_HLTV[Player]         = bool: is_user_hltv(Player);
     get_user_name(Player, g_playerName[Player], charsmax(g_playerName[]));
     SQL_QuoteString(Empty_Handle,
         g_playerCleanName[Player], charsmax(g_playerCleanName[]),
@@ -375,6 +379,7 @@ public client_putinserver(Player)
 {
     g_isPlayerInServer[Player] = true;
     g_isPlayerFake[Player]     = bool: is_user_bot(Player);
+    g_HLTV[Player]             = bool: is_user_hltv(Player);
 }
 
 public client_infochanged(Player)
@@ -440,7 +445,7 @@ public client_infochanged(Player)
 public client_command(Player)
 {
     static Cmd[16], Arg[16], Info[32], Len;
-    if (g_isPlayerInServer[Player] && g_playerRankEntry[Player] > -1 && !g_isPlayerFake[Player] &&
+    if (g_isPlayerInServer[Player] && g_playerRankEntry[Player] > -1 && !g_isPlayerFake[Player] && !g_HLTV[Player] &&
         read_argv(0, Cmd, charsmax(Cmd)) > 2 && (equali(Cmd, "say") || equali(Cmd, "say_team")) &&
         (Len = read_argv(1, Arg, charsmax(Arg))) > 2)
     {
@@ -715,7 +720,7 @@ public On_Sql_Entry_Selection(FailState, Handle: Query, const Error[], ErrorNum,
                         g_playerCleanName[Player], g_playerJoinUnixTimeStamp[Player],
                         g_playerRankEntry[Player]);
                 SQL_ThreadQuery(g_threadedSqlConnectionTuple, "dummySql", g_Buffer);
-                if (g_showWelcomeMsg && !g_isPlayerFake[Player])
+                if (g_showWelcomeMsg && !g_isPlayerFake[Player] && !g_HLTV[Player])
                 {
                     taskIdx = uniqueUserIndex + TaskOfs_Rank_UniqueUserId;
                     if (task_exists(taskIdx))
@@ -984,7 +989,7 @@ public On_Sql_Rank_Full_Info(FailState, Handle: Query, const Error[], ErrorNum, 
 public client_death(Killer, Victim, Weapon, Place, isTeamKill)
 {
     static bool: superKiller;
-    if (!g_requireMinPlayersForRanking || playingPlayers() >= g_minPlayersForRanking)
+    if (!isTeamKill && (!g_requireMinPlayersForRanking || playingPlayers() >= g_minPlayersForRanking))
     {
         superKiller =
             Killer != Victim && Killer > 0 && Killer <= g_maxPlayers && g_playerRankEntry[Killer] > -1;
@@ -1082,7 +1087,7 @@ playingPlayers()
     static Player, Playing, Team;
     for (Playing = 0, Player = 1; Player <= g_maxPlayers; Player++)
     {
-        if (g_playerRankEntry[Player] < 0)
+        if (g_HLTV[Player] || g_playerRankEntry[Player] < 0)
             continue;
         if (g_onlyHumans && g_isPlayerFake[Player])
             continue;

@@ -21,6 +21,7 @@ new Array: g_Scores;
 new g_Steam[33][64];
 new bool: g_keepFakePlayers;
 new bool: g_isPlayerFake[33];
+new bool: g_HLTV[33];
 
 public plugin_init()
 {
@@ -62,6 +63,9 @@ public client_connect(Player)
 public client_putinserver(Player)
 {
     static Iter, Score[DoD_Score], Name[32];
+    g_HLTV[Player] = bool: is_user_hltv(Player);
+    if (g_HLTV[Player])
+        return PLUGIN_CONTINUE;
     if (get_user_authid(Player, g_Steam[Player], charsmax(g_Steam[])) > 0)
     { /// We need something unique!
         g_isPlayerFake[Player] = bool: is_user_bot(Player);

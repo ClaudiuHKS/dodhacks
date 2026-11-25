@@ -44,7 +44,14 @@ new bool: g_InSpawn[33]; /// Player is currently spawning.
 new bool: g_InServer[33]; /// Player has fully joined.
 new bool: g_IsAuth[33]; /// Player is authorized.
 new bool: g_Fake[33]; /// Player is fake (a BOT).
+new bool: g_HLTV[33]; /// Player is a HLTV proxy.
 new bool: g_UseFake; /// Whether to include fake players when team-limiting certain guns.
+new bool: g_AutoShowMenu; /// Whether to auto display menu during player spawn.
+new bool: g_LotsOfAmmo; /// Whether to give lots of ammo for snipers & machine gunners for non-default ".ini" settings.
+new bool: g_DisableAutoScoping; /// Whether to disable auto weapons scoping during player spawns.
+new bool: g_NoAutoGunsForClasses; /// Whether to disable choosing a custom gun while the player is a specific player class.
+new bool: g_InitiallyStripPrim; /// Whether to try removing player primary weapon at spawn before assigning the newer gun.
+new bool: g_AutoErase; /// Whether to erase primary weapon (default one) from the player during their spawn.
 new bool: g_Local; /// Local storage in use.
 new bool: g_HideMsg; /// Whether or not to hide the 'guns' chat command typed by the players.
 new bool: g_British; /// Map is optimized for British against Axis.
@@ -176,6 +183,18 @@ public plugin_init()
                 g_HorPos = str_to_float(Name);
             else if (equali(Weapon, "@allow_all"))
                 allowAll = bool: str_to_num(Name);
+            else if (equali(Weapon, "@auto_erase"))
+                g_AutoErase = bool: str_to_num(Name);
+            else if (equali(Weapon, "@auto_menu"))
+                g_AutoShowMenu = bool: str_to_num(Name);
+            else if (equali(Weapon, "@custom_ammo"))
+                g_LotsOfAmmo = bool: str_to_num(Name);
+            else if (equali(Weapon, "@no_auto_for_class"))
+                g_NoAutoGunsForClasses = bool: str_to_num(Name);
+            else if (equali(Weapon, "@disable_auto_scoping"))
+                g_DisableAutoScoping = bool: str_to_num(Name);
+            else if (equali(Weapon, "@initially_strip_prim"))
+                g_InitiallyStripPrim = bool: str_to_num(Name);
             else if (equali(Weapon, "@admin_access"))
                 g_Flag = read_flags(Name);
             else if (equali(Weapon, "@handguns_access"))
@@ -217,7 +236,7 @@ public plugin_init()
      * If a player selects the Marksman class (scoped Enfield gun), for example, do not automatically
      * add a scope to it during player spawn function by default.
      */
-    if (DoD_IsAutoScopingEnabled())
+    if (g_DisableAutoScoping && DoD_IsAutoScopingEnabled())
         DoD_DisableAutoScoping();
     g_WpnBoxKill = DoD_GetFunctionAddress(DoD_FI_WpnBoxKill, false);
     if (DoD_Address_Null == g_WpnBoxKill)
@@ -301,6 +320,7 @@ public client_putinserver(Player)
 {
     g_InServer[Player] = true;
     g_Fake[Player] = bool: is_user_bot(Player);
+    g_HLTV[Player] = bool: is_user_hltv(Player);
 
     ArrayClear(g_Items[Player]);
     ArrayClear(g_Entities[Player]);
@@ -348,12 +368,14 @@ public DoD_OnPlayerSpawn_Post(DoD_Address: CDoDTeamPlay, Player)
         g_InSpawn[Player] = false;
         g_Team[Player] = get_user_team(Player);
         g_SpawnTime[Player] = get_gametime();
+        if (g_HLTV[Player])
+            goto Skip;
         Access = get_user_flags(Player);
         if (g_Flag != (Access & g_Flag))
             goto Skip;
         if (g_Gun[Player] < 0)
         {
-            if (false == g_Fake[Player])
+            if (g_AutoShowMenu && false == g_Fake[Player])
             {
                 if (false == F_IsViewingAMenu(Player))
                     F_ShowMenu(Player, true);
@@ -363,6 +385,49 @@ public DoD_OnPlayerSpawn_Post(DoD_Address: CDoDTeamPlay, Player)
         }
         else
         {
+            if (g_NoAutoGunsForClasses)
+            {
+                Res = pev(Player, pev_playerclass);
+                switch (Res)
+                {
+                    case DODC_SCHARFSCHUTZE:
+                    {
+                        if (g_LotsOfAmmo)
+                            DoD_GiveAmmo(Player, 100, "ammo_22mm", 100, Res);
+                        goto Skip;
+                    }
+                    case DODC_MARKSMAN:
+                    {
+                        if (g_LotsOfAmmo)
+                            DoD_GiveAmmo(Player, 100, "ammo_16mm", 100, Res);
+                        goto Skip;
+                    }
+                    case DODC_SNIPER:
+                    {
+                        if (g_LotsOfAmmo)
+                            DoD_GiveAmmo(Player, 100, "ammo_22mm", 100, Res);
+                        goto Skip;
+                    }
+                    case DODC_MG34:
+                    {
+                        if (g_LotsOfAmmo)
+                            DoD_GiveAmmo(Player, 1500, "ammo_66mm", 1500, Res);
+                        goto Skip;
+                    }
+                    case DODC_MG42:
+                    {
+                        if (g_LotsOfAmmo)
+                            DoD_GiveAmmo(Player, 5000, "ammo_66mm_ger", 5000, Res);
+                        goto Skip;
+                    }
+                    case DODC_30CAL:
+                    {
+                        if (g_LotsOfAmmo)
+                            DoD_GiveAmmo(Player, 3000, "ammo_66mm_us", 3000, Res);
+                        goto Skip;
+                    }
+                }
+            }
             ArrayGetString(g_Names, g_Gun[Player], Name, charsmax(Name));
             Flags = ArrayGetCell(g_Flags, g_Gun[Player]);
             if (Flags != (get_user_flags(Player) & Flags))
@@ -447,6 +512,21 @@ public DoD_OnPlayerSpawn_Post(DoD_Address: CDoDTeamPlay, Player)
                     }
                 }
                 ArrayGetString(g_Ammos, g_Gun[Player], Ammo, charsmax(Ammo));
+                if (g_InitiallyStripPrim && F_HasPrimaryWeapon(Player, Name, charsmax(Name), Res))
+                {
+                    if (g_Delete)
+                    {
+                        ArrayPushCell(g_Dropped, Res);
+                        ArrayPushCell(g_Times, -1.0 /** Mark for instant invisibility and soon deletion. */);
+                    }
+                    DoD_DropPlayerItem(Player, Name, true);
+                    Res = ArrayFindString(g_Items[Player], Name);
+                    if (Res > -1)
+                    {
+                        ArrayDeleteItem(g_Items[Player], Res);
+                        ArrayDeleteItem(g_Entities[Player], Res);
+                    }
+                }
                 if (DoD_GiveNamedItem(Player, Weapon, Item) && Item > g_MaxPlayers)
                 {
                     Count = ArrayGetCell(g_Counts, g_Gun[Player]);
@@ -512,6 +592,16 @@ public OnWeaponMenuItem(Player, Menu, Item)
     static Weapon[32], Name[32], Buffer[32], Access, Count, Flags, Entity, Res, Float: Time, Float: Wait, Players, Float: Percent;
     if (Item > -1)
     {
+        if (g_NoAutoGunsForClasses)
+        {
+            Res = pev(Player, pev_playerclass);
+            if (Res == DODC_SCHARFSCHUTZE || Res == DODC_MG34 || Res == DODC_MG42 ||
+                Res == DODC_MARKSMAN || Res == DODC_SNIPER || Res == DODC_30CAL)
+            {
+                client_print(Player, print_chat, "* A custom weapon and your player class are incompatible.");
+                return PLUGIN_HANDLED;
+            }
+        }
         Access = get_user_flags(Player);
         if (g_Flag != (Access & g_Flag))
             goto NoAccess;
@@ -652,7 +742,13 @@ public DoD_OnPackWeapon(Entity, &Weapon, &OverrideRes)
     if (Item > -1)
     { /// Remove the dropped weapon.
         Time = ArrayGetCell(g_Times, Item);
-        if (get_gametime() - Time < 0.01)
+        if (-1.0 == Time)
+        { /// Instantly invisible and will be erased very soon.
+            set_pev(Entity, pev_solid, SOLID_NOT);
+            set_pev(Entity, pev_effects, pev(Entity, pev_effects) | EF_NODRAW | EF_NOINTERP);
+            set_task(0.000001, "Task_RemoveWeaponBox", Entity);
+        }
+        else if (get_gametime() - Time < 0.01)
             set_task(0.000001, "Task_RemoveWeaponBox", Entity); /// Remove it only if recently dropped.
         ArrayDeleteItem(g_Dropped, Item);
         ArrayDeleteItem(g_Times, Item);
@@ -862,7 +958,7 @@ public DoD_OnGiveNamedItem(Player, Item[], ItemSize /** = 64 */, &OverrideRes)
 { /// Item may be altered during execution.
     if (!g_InSpawn[Player] || g_Fake[Player])
         return PLUGIN_CONTINUE; /// Skip.
-    if (DoD_IsWeaponPrimary(Item)) /// Do not auto. give a prim. weap. by default (excl. fake players).
+    if (g_AutoErase && DoD_IsWeaponPrimary(Item)) /// Do not auto. give a prim. weap. by default (excl. fake players).
         return PLUGIN_HANDLED;
     return PLUGIN_CONTINUE;
 }
@@ -870,7 +966,7 @@ public DoD_OnGiveNamedItem(Player, Item[], ItemSize /** = 64 */, &OverrideRes)
 public DoD_OnGiveNamedItem_Post(Player, const Item[], Entity)
 { /// Perform weapon scoping if needed (fake players only).
     static Class;
-    if (!g_InSpawn[Player] || !g_Fake[Player] || Entity <= g_MaxPlayers)
+    if (!g_DisableAutoScoping || !g_InSpawn[Player] || !g_Fake[Player] || Entity <= g_MaxPlayers)
         return PLUGIN_CONTINUE; /// Skip.
     Class = pev(Player, pev_playerclass);
     switch (Class)
@@ -887,8 +983,8 @@ public DoD_OnGiveNamedItem_Post(Player, const Item[], Entity)
 
 public client_command(Player)
 {
-    static Cmd[32], Arg[32];
-    if (g_InServer[Player] && false == g_Fake[Player] && read_argv(0, Cmd, charsmax(Cmd)) > 2 &&
+    static Cmd[32], Arg[32], Res;
+    if (g_InServer[Player] && false == g_Fake[Player] && false == g_HLTV[Player] && read_argv(0, Cmd, charsmax(Cmd)) > 2 &&
         (equali(Cmd, "say") || equali(Cmd, "say_team")))
     {
         if (read_argv(1, Arg, charsmax(Arg)) > 3 &&
@@ -903,6 +999,16 @@ public client_command(Player)
                 client_print(Player, print_chat, "* No access to use this feature.");
                 return g_HideMsg ? PLUGIN_HANDLED /** Block showing the typed msg. */ : PLUGIN_CONTINUE;
             }
+            if (g_NoAutoGunsForClasses)
+            {
+                Res = pev(Player, pev_playerclass);
+                if (Res == DODC_SCHARFSCHUTZE || Res == DODC_MG34 || Res == DODC_MG42 ||
+                    Res == DODC_MARKSMAN || Res == DODC_SNIPER || Res == DODC_30CAL)
+                {
+                    client_print(Player, print_chat, "* A custom weapon and your player class are incompatible.");
+                    return g_HideMsg ? PLUGIN_HANDLED /** Block showing the typed msg. */ : PLUGIN_CONTINUE;
+                }
+            }
             if (false == F_IsViewingAMenu(Player))
                 F_ShowMenu(Player, true);
             else
@@ -916,12 +1022,23 @@ public client_command(Player)
 
 public OnPlayerClConCmd_Guns(Player)
 {
-    if (false == g_InServer[Player] || g_Fake[Player])
+    static Res;
+    if (false == g_InServer[Player] || g_Fake[Player] || g_HLTV[Player])
         return PLUGIN_HANDLED; /// Block.
     if (g_Flag != (get_user_flags(Player) & g_Flag))
     {
         client_print(Player, print_chat, "* No access to use this feature.");
         return PLUGIN_HANDLED;
+    }
+    if (g_NoAutoGunsForClasses)
+    {
+        Res = pev(Player, pev_playerclass);
+        if (Res == DODC_SCHARFSCHUTZE || Res == DODC_MG34 || Res == DODC_MG42 ||
+            Res == DODC_MARKSMAN || Res == DODC_SNIPER || Res == DODC_30CAL)
+        {
+            client_print(Player, print_chat, "* A custom weapon and your player class are incompatible.");
+            return PLUGIN_HANDLED;
+        }
     }
     if (false == F_IsViewingAMenu(Player))
         F_ShowMenu(Player, true);
@@ -1035,6 +1152,7 @@ F_ZeroPlayerVars(Player)
 {
     g_Gun[Player] = -1;
     g_Team[Player] = 0;
+    g_HLTV[Player] = false;
     g_Page[Player] = 0;
     g_Fake[Player] = false;
     g_IsAuth[Player] = false;

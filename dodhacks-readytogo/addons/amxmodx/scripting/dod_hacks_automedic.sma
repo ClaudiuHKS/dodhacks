@@ -11,6 +11,7 @@ new g_healthPerTask; /// Health to give during each task.
 new g_soundFile[256]; /// Audio sound file, if any. << Populated only if 'g_Sound' is set to true >>.
 new bool: g_isInServer[33]; /// Whether or not the player is in server.
 new bool: g_isFakePlayer[33]; /// Whether or not the player is a BOT (a fake player).
+new bool: g_HLTV[33]; /// Whether or not user is a HLTV proxy.
 new bool: g_canTrigger[33]; /// Whether or not the audio sound file may play for the player.
 new bool: g_Sound; /// Whether or not to play an audio file during player's healing process.
 new bool: g_speakToPlayer; /// If true, sound file will be played only to the player. Otherwise, players close to the healed will hear as well.
@@ -117,7 +118,7 @@ public Task_HealPlayers()
     static Player, Added, Float: Time;
     for (Player = 1, Time = get_gametime(); Player <= g_maxPlayers; Player++)
     {
-        if (g_isInServer[Player] && Time - g_dmgTime[Player] > g_Delay)
+        if (g_isInServer[Player] && !g_HLTV[Player] && Time - g_dmgTime[Player] > g_Delay)
         { /// This call automatically excludes dead players.
             DoD_AddHealthIfWounded(Player, g_healthPerTask, Added);
             if (g_Sound)
@@ -147,6 +148,7 @@ public client_putinserver(Player)
     g_isInServer[Player] = true;
     g_canTrigger[Player] = true;
     g_isFakePlayer[Player] = bool: is_user_bot(Player);
+    g_HLTV[Player] = bool: is_user_hltv(Player);
     g_dmgTime[Player] = 0.0;
 }
 

@@ -8,6 +8,7 @@ new g_maxPlayers;
 new Float: g_maxSeconds;
 new Float: g_playerSpecTime[33];
 new bool: g_isPlayerFake[33];
+new bool: g_HLTV[33];
 new bool: g_isPlayerWarned[33];
 new bool: g_isPlayerInServer[33];
 
@@ -48,6 +49,7 @@ public plugin_init()
 public client_putinserver(Player)
 {
     g_isPlayerInServer[Player] = true;
+    g_HLTV[Player] = bool: is_user_hltv(Player);
     g_isPlayerFake[Player] = bool: is_user_bot(Player);
     g_isPlayerWarned[Player] = false;
     g_playerSpecTime[Player] = 0.0;
@@ -64,6 +66,7 @@ public DOD_ON_PLAYER_DISCONNECTED
     g_isPlayerInServer[Player] = false;
     g_isPlayerWarned[Player] = false;
     g_isPlayerFake[Player] = false;
+    g_HLTV[Player] = false;
     g_playerSpecTime[Player] = 0.0;
 }
 
@@ -80,7 +83,7 @@ public Task_Spec()
     if (get_playersnum() == g_maxPlayers)
         for (Player = 1; Player <= g_maxPlayers; Player++)
         {
-            if (!g_isPlayerInServer[Player])
+            if (!g_isPlayerInServer[Player] || g_HLTV[Player])
                 continue;
             Team = get_user_team(Player);
             if (Team == ALLIES || Team == AXIS)
@@ -106,7 +109,7 @@ public Task_Spec()
     else
         for (Player = 1; Player <= g_maxPlayers; Player++)
         {
-            if (!g_isPlayerInServer[Player])
+            if (!g_isPlayerInServer[Player] || g_HLTV[Player])
                 continue;
             Team = get_user_team(Player);
             if (Team == ALLIES || Team == AXIS)
