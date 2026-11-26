@@ -88,6 +88,7 @@ new bool: g_exclVoteMapOverviewBmp;
 new bool: g_exclVoteMapOverviewTxt;
 new bool: g_onlyChangeFakePlayerVelocity;
 new bool: g_hideChatCommands;
+new bool: g_playersBlocked;
 new bool: g_greyDecisionMenu;
 new bool: g_nominateByChatMapName;
 new bool: g_skipActualMapExclExtension;
@@ -220,6 +221,8 @@ public plugin_init()
             g_hudVerPos = str_to_float(Val);
         else if (equali(Key, "@mapchooser_hudhorpos"))
             g_hudHorPos = str_to_float(Val);
+        else if (equali(Key, "@players_blocked"))
+            g_playersBlocked = bool: str_to_num(Val);
         else if (equali(Key, "@mapchooser_rockmapdelay"))
             g_rockTheDecisionMapStartDelay = floatmax(60.0, str_to_float(Val));
         else if (equali(Key, "@mapchooser_rockpercent"))
@@ -754,7 +757,7 @@ public OnUpdateClientData_Pre(Player, sendWeapons, Pack) /// Only executed while
     if (g_isInServer[Player])
     {
         updatePlayer(Player, true);
-        if (Pack && is_user_alive(Player))
+        if (g_playersBlocked && Pack && is_user_alive(Player))
             set_cd(Pack, CD_Velocity, Float: { 0.0, 0.0, 0.0 }); /// Ensure player not moving.
     }
 }
@@ -764,7 +767,7 @@ public OnUpdateClientData_Post(Player, sendWeapons, Pack) /// Only executed whil
     if (g_isInServer[Player])
     {
         updatePlayer(Player, true);
-        if (Pack && is_user_alive(Player))
+        if (g_playersBlocked && Pack && is_user_alive(Player))
             set_cd(Pack, CD_Velocity, Float: { 0.0, 0.0, 0.0 }); /// Ensure player not moving.
     }
 }
@@ -774,7 +777,7 @@ public OnClientCommand_Pre(Player) /// Only executed while voting. Executed for 
     if (g_isInServer[Player])
     {
         updatePlayer(Player, true);
-        if (is_user_alive(Player))
+        if (g_playersBlocked && is_user_alive(Player))
             return FMRES_SUPERCEDE; /// Block processing player commands.
     }
     return FMRES_IGNORED;
@@ -785,7 +788,7 @@ public OnClientKill_Pre(Player) /// Only executed while voting. Executed for 'vo
     if (g_isInServer[Player])
     {
         updatePlayer(Player, true);
-        if (is_user_alive(Player))
+        if (g_playersBlocked && is_user_alive(Player))
             return FMRES_SUPERCEDE; /// Block processing player commands.
     }
     return !g_badAreUsersBlockedFromSuicide && DoD_AreUsersBlockedFromSuicide() ? FMRES_SUPERCEDE : FMRES_IGNORED;
@@ -796,7 +799,7 @@ public OnCmdStart_Pre(Player, Pack) /// Only executed while voting. Executed for
     if (g_isInServer[Player])
     {
         updatePlayer(Player, true);
-        if (Pack && is_user_alive(Player))
+        if (g_playersBlocked && Pack && is_user_alive(Player))
         {
             set_uc(Pack, UC_Buttons, 0); /// Ensure player not pressing a key.
             set_uc(Pack, UC_Impulse, 0); /// Ensure player not using an impulse.
@@ -812,7 +815,7 @@ public OnCmdStart_Post(Player, Pack) /// Only executed while voting. Executed fo
     if (g_isInServer[Player])
     {
         updatePlayer(Player, true);
-        if (Pack && is_user_alive(Player))
+        if (g_playersBlocked && Pack && is_user_alive(Player))
         {
             set_uc(Pack, UC_Buttons, 0); /// Ensure player not pressing a key.
             set_uc(Pack, UC_Impulse, 0); /// Ensure player not using an impulse.
@@ -1266,24 +1269,14 @@ bool: isViewingAMenu(Player)
 }
 
 updatePlayer(Player, bool: Freeze)
-{
-    switch (Freeze)
-    {
-        case true:
+    if (g_playersBlocked)
+        switch (Freeze)
         {
-            if (is_user_alive(Player))
-            { /// During the vote, alive players are literally frozen. They are not allowed to move or attack another players.
-                if (!g_isFakePlayer[Player])
-                {
-                    set_pev(Player, pev_flags, pev(Player, pev_flags) | FL_FROZEN);
-                    set_pev(Player, pev_button, 0);
-                    set_pev(Player, pev_oldbuttons, 0);
-                    set_pev(Player, pev_impulse, 0);
-                    set_pev(Player, pev_velocity, Float: { 0.0, 0.0, 0.0 });
-                }
-                else
-                {
-                    if (!g_onlyChangeFakePlayerVelocity)
+            case true:
+            {
+                if (is_user_alive(Player))
+                { /// During the vote, alive players are literally frozen. They are not allowed to move or attack another players.
+                    if (!g_isFakePlayer[Player])
                     {
                         set_pev(Player, pev_flags, pev(Player, pev_flags) | FL_FROZEN);
                         set_pev(Player, pev_button, 0);
@@ -1292,16 +1285,25 @@ updatePlayer(Player, bool: Freeze)
                         set_pev(Player, pev_velocity, Float: { 0.0, 0.0, 0.0 });
                     }
                     else
-                        set_pev(Player, pev_velocity, Float: { 2.5, 2.5, 2.5 });
+                    {
+                        if (!g_onlyChangeFakePlayerVelocity)
+                        {
+                            set_pev(Player, pev_flags, pev(Player, pev_flags) | FL_FROZEN);
+                            set_pev(Player, pev_button, 0);
+                            set_pev(Player, pev_oldbuttons, 0);
+                            set_pev(Player, pev_impulse, 0);
+                            set_pev(Player, pev_velocity, Float: { 0.0, 0.0, 0.0 });
+                        }
+                        else
+                            set_pev(Player, pev_velocity, Float: { 2.5, 2.5, 2.5 });
+                    }
                 }
+                else
+                    set_pev(Player, pev_flags, pev(Player, pev_flags) & ~FL_FROZEN);
             }
-            else
+            default:
                 set_pev(Player, pev_flags, pev(Player, pev_flags) & ~FL_FROZEN);
         }
-        default:
-            set_pev(Player, pev_flags, pev(Player, pev_flags) & ~FL_FROZEN);
-    }
-}
 
 updatePlayers(bool: Freeze)
 {
