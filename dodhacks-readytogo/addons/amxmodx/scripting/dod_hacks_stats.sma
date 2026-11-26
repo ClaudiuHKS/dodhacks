@@ -296,7 +296,7 @@ public plugin_init() {
  * ---------
  */
 public plugin_natives()
-    if (is_plugin_loaded("DoD Stats"))
+    if (-1 != is_plugin_loaded("DoD Stats"))
         pause("cd", "stats.amxx");
 /**
  * ---------

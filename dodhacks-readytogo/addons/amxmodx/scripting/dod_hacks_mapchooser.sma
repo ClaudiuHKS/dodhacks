@@ -339,9 +339,9 @@ mapsLoaded:
 public plugin_natives()
 {
     set_native_filter("nativesFilter");
-    if (is_plugin_loaded("Nextmap Chooser"))
+    if (-1 != is_plugin_loaded("Nextmap Chooser"))
         pause("cd", "mapchooser.amxx");
-    else if (is_plugin_loaded("Galileo"))
+    else if (-1 != is_plugin_loaded("Galileo"))
         pause("cd", "galileo.amxx");
 }
 

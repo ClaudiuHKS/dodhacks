@@ -185,7 +185,7 @@ public plugin_init()
 public plugin_natives()
 {
     set_native_filter("nativesFilter");
-    if (is_plugin_loaded("Info. Messages"))
+    if (-1 != is_plugin_loaded("Info. Messages"))
         pause("cd", "imessage.amxx");
 }
 

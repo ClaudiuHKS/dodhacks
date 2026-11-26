@@ -76,7 +76,7 @@ public plugin_init()
  * ---------
  */
 public plugin_natives()
-    if (is_plugin_loaded("Scrolling Message"))
+    if (-1 != is_plugin_loaded("Scrolling Message"))
         pause("cd", "scrollmsg.amxx");
 /**
  * ---------

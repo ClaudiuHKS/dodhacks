@@ -118,7 +118,7 @@ public plugin_precache()
     }
     fclose(Config);
 
-    if (!is_plugin_loaded("DoD Sounds Precache"))
+    if (-1 == is_plugin_loaded("DoD Sounds Precache"))
         precache_sound("misc/killingspree.wav");
 
     precache_sound(g_allyWav);
