@@ -200,7 +200,7 @@ public Func_AllowAllPlayersThrowKnives()
 {
     static Player;
     for (Player = 1; Player <= g_maxPlayers; Player++)
-        if (g_isPlayerInServer[Player] && !g_isPlayerAwaiting[Player] && is_user_alive(Player))
+        if (g_isPlayerInServer[Player] && is_user_alive(Player))
             g_canPlayerThrow[Player] = true;
 }
 
