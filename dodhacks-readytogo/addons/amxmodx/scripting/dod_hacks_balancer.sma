@@ -19,7 +19,7 @@ new bool: g_isPlayerInServer[33];
 new g_Flag;
 new g_maxPlayers;
 new g_msgScreenFade;
-new g_multiPlayerTeamLimit;
+new g_maxDifference;
 
 public plugin_init()
 {
@@ -55,6 +55,8 @@ public plugin_init()
             g_doBeep = bool: str_to_num(Val);
         else if (equali(Key, "@excl_flags"))
             g_Flag = read_flags(Val);
+        else if (equali(Key, "@max_difference"))
+            g_maxDifference = str_to_num(Val);
     }
     fclose(Config);
 
@@ -62,7 +64,6 @@ public plugin_init()
     g_areAlliesBritish = DoD_AreAlliesBritish();
     if (g_showScreenFade)
         g_msgScreenFade = get_user_msgid("ScreenFade");
-    g_multiPlayerTeamLimit = get_cvar_pointer("mp_teamlimit");
     set_task(taskInterval, "Task_BalanceTeams", .flags = "b");
     return PLUGIN_CONTINUE;
 }
@@ -87,13 +88,12 @@ public client_putinserver(Player)
 
 public Task_BalanceTeams()
 {
-    static Allies, Axis, maxAllowedDifference, Players[32], Name[32], Player, Class, bool: Random;
-    maxAllowedDifference = get_pcvar_num(g_multiPlayerTeamLimit);
-    if (!maxAllowedDifference)
+    static Allies, Axis, Players[32], Name[32], Player, Class, bool: Random;
+    if (!g_maxDifference)
         return PLUGIN_HANDLED;
     Allies = get_players_dod(Players, false, false, ALLIES, false);
     Axis = get_players_dod(Players, false, false, AXIS, false);
-    if (Allies - Axis > maxAllowedDifference)
+    if (Allies - Axis > g_maxDifference)
     {
         Allies = get_players_dod(Players, true, true, ALLIES, g_exclUnclassed);
         if (Allies > 0)
@@ -128,7 +128,7 @@ public Task_BalanceTeams()
             }
         }
     }
-    else if (Axis - Allies > maxAllowedDifference)
+    else if (Axis - Allies > g_maxDifference)
     {
         Axis = get_players_dod(Players, true, true, AXIS, g_exclUnclassed);
         if (Axis > 0)

@@ -29,7 +29,7 @@ public On_FM_KeyValue(Entity, keyVal)
         return FMRES_IGNORED;
 
     get_kvd(keyVal, KV_KeyName, Key, charsmax(Key));
-    if (Key[0] != 'a')
+    if (Key[0] != 'a' && Key[0] != 'A')
         return FMRES_IGNORED;
 
     if (equali(Key, "area_allies_numcap"))
