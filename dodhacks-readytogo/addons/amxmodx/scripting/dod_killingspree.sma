@@ -33,15 +33,14 @@ new Float: g_customTime;
 new Float: g_Timer = 0.0;
 new Float: g_axisTime = 0.0;
 new Float: g_allyTime = 0.0;
-new Float: g_winStamp = 0.0;
 new ksStatus: g_Status = ksStatus: Idle;
 new g_Team = 0;
+new g_Calls = 0;
 new g_Life = 100;
 new g_maxPlayers;
 new g_syncMsg = -1;
 new g_syncTmr = -1;
 new g_tchHook = -1;
-new g_sndHook = -1;
 new g_stripEntity = -1;
 new g_scoreEntity = -1;
 new g_controlPointMasterEntity = -1;
@@ -156,6 +155,8 @@ public plugin_init()
         dllfunc(DLLFunc_Spawn, g_stripEntity);
     }
 
+    register_forward(FM_EmitAmbientSound,              "On_FM_EmitAmbientSound_Pre");
+
     RegisterHam(Ham_Think, "dod_control_point_master", "On_Ham_CtrlPntMaster_Think_Pre");
     RegisterHam(Ham_Use,   "dod_score_ent",            "On_Ham_ScoreEntity_Use_Pre");
     RegisterHam(Ham_Use,   "dod_score_ent",            "On_Ham_ScoreEntity_Use_Post", true);
@@ -216,6 +217,7 @@ public On_RoundState_Begin_FreezeEnd()
     Entity = -1;
     while ((Entity = engfunc(EngFunc_FindEntityByString, Entity, "classname", "func_tank")))
         ExecuteHamB(Ham_Think, Entity);
+    g_Calls = 0;
     g_origPlayed = false;
     g_customPlayed = false;
     g_areOpSpawnAreasSafe = false;
@@ -224,9 +226,9 @@ public On_RoundState_Begin_FreezeEnd()
 }
 
 public On_FM_EmitAmbientSound_Pre(Entity, Float: Pos[3], Snd[], Float: Vol, Float: Attn, Flags, Pitch)
-{ /// Enabled only on demand.
+{
     static Trie: Bundle, Buffer[4];
-    if (get_gametime() - g_winStamp < 0.01)
+    if (g_Calls < 2 && (areAllObjectivesAlly() || areAllObjectivesAxis()))
     {
         Bundle = TrieCreate();
         copy(g_origWinSnd, charsmax(g_origWinSnd), Snd);
@@ -238,6 +240,7 @@ public On_FM_EmitAmbientSound_Pre(Entity, Float: Pos[3], Snd[], Float: Vol, Floa
         TrieSetArray(Bundle, "origin",      Pos, sizeof Pos);
         Buffer[0] = normalizeTrie: Bundle;
         set_task(g_killingSpreeLength, "On_Timer_Custom_Music", 696101252, Buffer, sizeof Buffer);
+        g_Calls++;
         return FMRES_SUPERCEDE;
     }
     return FMRES_IGNORED;
@@ -276,8 +279,7 @@ public On_Ham_ScoreEntity_Use_Pre(Entity)
         g_Team = pev(Entity, pev_team);
         set_task(g_Team == AXIS ? g_axisTime : g_allyTime,
             "On_Timer_End_The_Killing_Spree", 272606959);
-        g_tchHook = register_forward(FM_Touch,            "On_FM_Touch_Pre");
-        g_sndHook = register_forward(FM_EmitAmbientSound, "On_FM_EmitAmbientSound_Pre");
+        g_tchHook = register_forward(FM_Touch, "On_FM_Touch_Pre");
         return HAM_SUPERCEDE; /// The task above will call Use() at a later time.
     }
     return HAM_IGNORED;
@@ -290,7 +292,6 @@ public On_Ham_ScoreEntity_Use_Post(Entity)
     {
         case (ksStatus: Prep):
         { /// Preparation phase #2.
-            g_winStamp = get_gametime();
             for (Player = 1; Player <= g_maxPlayers; Player++)
                 if (g_isPlayerInServer[Player] && is_user_alive(Player))
                 {
@@ -320,8 +321,7 @@ public On_Ham_ScoreEntity_Use_Post(Entity)
             for (Player = 1; Player <= g_maxPlayers; Player++)
                 if (g_isPlayerInServer[Player])
                     dod_set_stamina(Player, STAMINA_RESET);
-            unregister_forward(FM_Touch,            g_tchHook);
-            unregister_forward(FM_EmitAmbientSound, g_sndHook);
+            unregister_forward(FM_Touch, g_tchHook);
         }
     }
 }
@@ -468,4 +468,24 @@ bool: stripEquip(Player, Team)
         default:     DoD_GiveNamedItem(Player, "weapon_spade",     Res);
     }
     return Res > g_maxPlayers;
+}
+
+bool: areAllObjectivesAxis()
+{
+    static Objective, Objectives;
+    Objectives = objectives_get_num();
+    for (Objective = 0; Objective < Objectives; Objective++)
+        if (AXIS != objective_get_data(Objective, CP_owner))
+            return false;
+    return true;
+}
+
+bool: areAllObjectivesAlly()
+{
+    static Objective, Objectives;
+    Objectives = objectives_get_num();
+    for (Objective = 0; Objective < Objectives; Objective++)
+        if (ALLIES != objective_get_data(Objective, CP_owner))
+            return false;
+    return true;
 }
