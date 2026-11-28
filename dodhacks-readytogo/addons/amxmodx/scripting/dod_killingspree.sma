@@ -293,11 +293,13 @@ public On_Ham_ScoreEntity_Use_Post(Entity)
         case (ksStatus: Prep):
         { /// Preparation phase #2.
             for (Player = 1; Player <= g_maxPlayers; Player++)
-                if (g_isPlayerInServer[Player] && is_user_alive(Player))
-                {
+            {
+                if (!g_isPlayerInServer[Player])
+                    continue;
+                if (is_user_alive(Player))
                     stripEquip(Player, -1);
-                    dod_set_stamina(Player, STAMINA_SET, 100, 100);
-                }
+                dod_set_stamina(Player, STAMINA_SET, 100, 100);
+            }
             if (g_throwingKnivesCalls)
                 DoD_AllowAllPlayersThrowKnives();
             Entity = -1;
