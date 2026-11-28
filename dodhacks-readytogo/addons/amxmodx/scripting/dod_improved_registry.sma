@@ -3,10 +3,6 @@
 #include <fakemeta>
 #include <dodx>
 
-#define PLUGIN  "DoD Improved Registry"
-#define VERSION "1.0"
-#define AUTHOR  "AlliedModders LLC"
-
 new g_maxPlayers;
 
 new bool: g_inServer[33];
@@ -14,7 +10,7 @@ new bool: g_isFake[33];
 
 public plugin_init()
 {
-    register_plugin(PLUGIN, VERSION, AUTHOR);
+    register_plugin("DoD Improved Registry", "1.0", "AlliedModders LLC");
 
     register_forward(FM_TraceLine, "On_FM_TraceLine_Post", true);
 
